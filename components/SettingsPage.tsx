@@ -19,23 +19,48 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
   const [notifications, setNotifications] = useState({ email: true, push: false, weekly: true });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
+  const [githubUsername, setGithubUsername] = useState(user?.githubUsername || '');
+  const [githubRepo, setGithubRepo] = useState(user?.githubRepo || '');
+  const [githubToken, setGithubToken] = useState(user?.githubToken || '');
+
   useEffect(() => {
     if (user) {
       setUserName(user.name);
       setUserAvatar(user.avatar);
+      setGithubUsername(user.githubUsername || '');
+      setGithubRepo(user.githubRepo || '');
+      setGithubToken(user.githubToken || '');
     }
   }, [user]);
 
   const handleSaveProfile = () => {
     if (!user) return;
     setSaveStatus('saving');
-    
+
     const updatedUser = {
       ...user,
       name: userName,
       avatar: userAvatar
     };
-    
+
+    setTimeout(() => {
+      onUpdateUser(updatedUser);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }, 800);
+  };
+
+  const handleSaveGitHub = () => {
+    if (!user) return;
+    setSaveStatus('saving');
+
+    const updatedUser: User = {
+      ...user,
+      githubUsername,
+      githubRepo,
+      githubToken
+    };
+
     setTimeout(() => {
       onUpdateUser(updatedUser);
       setSaveStatus('saved');
@@ -58,7 +83,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
                 <div className="w-24 h-24 rounded-full border-4 border-primary/20 overflow-hidden bg-slate-200 dark:bg-white/5 shadow-xl">
                   <img src={userAvatar} className="w-full h-full object-cover" alt="User Avatar" />
                 </div>
-                <button 
+                <button
                   onClick={generateRandomAvatar}
                   className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center text-black shadow-lg hover:scale-110 active:scale-95 transition-all"
                 >
@@ -70,14 +95,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">コマンダーネーム</label>
-                <input 
-                  value={userName} 
+                <input
+                  value={userName}
                   onChange={(e) => setUserName(e.target.value)}
                   placeholder="名前を入力してください"
                   className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
                 />
               </div>
-              <button 
+              <button
                 onClick={handleSaveProfile}
                 disabled={saveStatus !== 'idle'}
                 className={`w-full ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-primary'} text-black font-black py-4 rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2`}
@@ -106,8 +131,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
                   <p className="font-bold text-sm text-slate-800 dark:text-gray-200">{item.label}</p>
                   <p className="text-[10px] text-slate-500 dark:text-gray-500">{item.desc}</p>
                 </div>
-                <button 
-                  onClick={() => setNotifications({...notifications, [item.id as keyof typeof notifications]: !item.val})}
+                <button
+                  onClick={() => setNotifications({ ...notifications, [item.id as keyof typeof notifications]: !item.val })}
                   className={`w-12 h-6 rounded-full transition-colors relative ${item.val ? 'bg-primary' : 'bg-slate-300 dark:bg-gray-700'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${item.val ? 'left-7' : 'left-1'}`}></div>
@@ -124,14 +149,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
               { id: 'dark', name: 'Deep Space', desc: '没入感のあるダークテーマ', color: 'bg-background-dark' },
               { id: 'light', name: 'Solar Energy', desc: '高視認性のライトテーマ', color: 'bg-white' },
             ].map(t => (
-              <button 
-                key={t.id} 
+              <button
+                key={t.id}
                 onClick={() => onThemeChange(t.id as ThemeType)}
-                className={`flex items-center gap-4 p-5 rounded-2xl border transition-all text-left group ${
-                  theme === t.id 
-                  ? 'bg-primary/10 border-primary' 
-                  : 'bg-white/50 dark:bg-white/5 border-slate-200 dark:border-white/10'
-                }`}
+                className={`flex items-center gap-4 p-5 rounded-2xl border transition-all text-left group ${theme === t.id
+                    ? 'bg-primary/10 border-primary'
+                    : 'bg-white/50 dark:bg-white/5 border-slate-200 dark:border-white/10'
+                  }`}
               >
                 <div className={`w-12 h-12 rounded-xl ${t.color} border border-slate-300 dark:border-white/20 shadow-inner`}></div>
                 <div className="flex-1">
@@ -146,20 +170,63 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
 
       case 'github':
         return (
-          <div className="text-center py-8 animate-fade-in-up space-y-6">
-            <div className="w-20 h-20 bg-slate-200 dark:bg-white/10 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-slate-300 dark:border-white/10">
-              <span className="material-symbols-outlined text-4xl text-slate-800 dark:text-white">hub</span>
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="w-full flex flex-col items-center justify-center mb-4">
+              <div className="w-20 h-20 bg-slate-200 dark:bg-white/10 rounded-3xl flex items-center justify-center mb-4 border border-slate-300 dark:border-white/10">
+                <span className="material-symbols-outlined text-4xl text-slate-800 dark:text-white">hub</span>
+              </div>
+              <h3 className="text-xl font-bold mb-1 text-slate-800 dark:text-white">GitHub Connect</h3>
+              <p className="text-xs text-slate-500 dark:text-gray-400">学習ログを自動で同期します</p>
             </div>
-            <div>
-              <h3 className="text-xl font-bold mb-2 text-slate-800 dark:text-white">GitHub連携</h3>
-              <p className="text-sm text-slate-500 dark:text-gray-400 px-8">GitHubのコミット履歴を自動で学習ログとしてインポートできます。</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">GitHub Username</label>
+                <input
+                  value={githubUsername}
+                  onChange={(e) => setGithubUsername(e.target.value)}
+                  placeholder="例: naganoma"
+                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">Repository Name</label>
+                <input
+                  value={githubRepo}
+                  onChange={(e) => setGithubRepo(e.target.value)}
+                  placeholder="例: space-log"
+                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">Personal Access Token (Repo Scope)</label>
+                <input
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  type="password"
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
+                />
+                <p className="text-[10px] text-slate-400 mt-2 px-1">
+                  ※ TokenはlocalStorageにのみ保存され、外部送信されません。
+                </p>
+              </div>
+
+              <button
+                onClick={handleSaveGitHub}
+                disabled={saveStatus !== 'idle'}
+                className={`w-full ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-slate-800 dark:bg-white'} ${saveStatus === 'saved' ? 'text-white' : 'text-white dark:text-black'} font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2 mt-4`}
+              >
+                {saveStatus === 'saving' ? (
+                  <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
+                ) : saveStatus === 'saved' ? (
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                ) : (
+                  <span className="material-symbols-outlined text-sm">save</span>
+                )}
+                {saveStatus === 'saving' ? '接続中...' : saveStatus === 'saved' ? '設定完了' : '設定を保存'}
+              </button>
             </div>
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mx-4">
-              <p className="text-xs text-red-500 font-bold">未連携</p>
-            </div>
-            <button className="bg-slate-800 dark:bg-white text-white dark:text-black font-black px-10 py-4 rounded-full flex items-center gap-2 mx-auto hover:scale-105 transition-transform">
-              GitHubで認証する
-            </button>
           </div>
         );
 
@@ -172,8 +239,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
               { id: 'theme', label: 'テーマ設定', sub: '外観のカスタマイズ', icon: theme === 'dark' ? 'dark_mode' : 'light_mode', color: 'text-amber-500' },
               { id: 'github', label: 'GitHub連携', sub: 'コミットの同期', icon: 'hub', color: 'text-slate-400' },
             ].map(item => (
-              <button 
-                key={item.id} 
+              <button
+                key={item.id}
                 onClick={() => setCurrentView(item.id as SettingsView)}
                 className="w-full flex items-center justify-between p-5 bg-white/70 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors group"
               >
@@ -189,8 +256,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
                 <span className="material-symbols-outlined text-slate-400 dark:text-gray-600 group-hover:text-primary transition-colors">chevron_right</span>
               </button>
             ))}
-            
-            <button 
+
+            <button
               onClick={onLogout}
               className="w-full flex items-center justify-center gap-2 p-5 border border-red-500/20 dark:border-red-900/30 text-red-500 dark:text-red-400 rounded-3xl hover:bg-red-500/10 transition-colors mt-8 font-black"
             >
@@ -207,7 +274,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
       <header className="pt-14 px-6 pb-8 flex items-end justify-between md:pt-6">
         <div className="flex items-center gap-4">
           {currentView !== 'menu' && (
-            <button 
+            <button
               onClick={() => setCurrentView('menu')}
               className="w-10 h-10 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-white/20 transition-colors text-slate-800 dark:text-white"
             >
@@ -216,10 +283,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
           )}
           <div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500 dark:from-white dark:to-blue-200 drop-shadow-sm">
-              {currentView === 'menu' ? '設定' : 
-               currentView === 'profile' ? 'プロフィール' :
-               currentView === 'notifications' ? '通知' :
-               currentView === 'theme' ? 'テーマ' : 'GitHub'}
+              {currentView === 'menu' ? '設定' :
+                currentView === 'profile' ? 'プロフィール' :
+                  currentView === 'notifications' ? '通知' :
+                    currentView === 'theme' ? 'テーマ' : 'GitHub'}
             </h1>
             <p className="text-[10px] text-blue-500 dark:text-blue-300 font-bold mt-1 tracking-widest uppercase">CONFIGURATION</p>
           </div>

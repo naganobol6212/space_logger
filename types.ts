@@ -19,4 +19,7 @@ export interface User {
   avatar: string;
   streak: number;
   theme?: ThemeType;
+  githubUsername?: string;
+  githubRepo?: string;
+  githubToken?: string;
 }
