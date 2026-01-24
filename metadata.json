@@ -1,0 +1,9 @@
+
+{
+  "name": "Space Logger - 学習記録アプリ",
+  "description": "宇宙をテーマにしたスタイリッシュな学習記録管理アプリケーション。日々の学習内容、時間、技術スタックを記録し、分析します。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
