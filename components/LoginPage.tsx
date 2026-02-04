@@ -23,7 +23,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         setError('すべての項目を入力してください');
         return;
       }
-      
+
       const newUser: User = {
         id: Date.now().toString(),
         name,
@@ -40,20 +40,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     } else {
       const db = getUsersDB();
       const user = db.find(u => u.email === email);
-      
+
       // デモ用：パスワード検証は省略
       if (user) {
         onLogin(user);
       } else {
         // デフォルトユーザーのフォールバック（デモ用）
         if (email === 'demo@example.com') {
-           onLogin({
+          onLogin({
             id: 'demo',
             name: 'デモパイロット',
             email: 'demo@example.com',
             avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Demo',
             streak: 5
-           });
+          });
         } else {
           setError('ユーザーが見つかりません。新規登録してください。');
         }
@@ -62,7 +62,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="relative h-screen w-full flex flex-col items-center justify-center p-6 text-center">
+    <div className="relative h-screen w-full flex flex-col items-center justify-center p-6 text-center overflow-hidden isolate">
       <div className="mb-8 animate-float">
         <div className="relative inline-block">
           <div className="absolute inset-0 bg-primary/30 blur-2xl rounded-full scale-150"></div>
@@ -92,7 +92,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         {isSignUp && (
           <div className="text-left">
             <label className="block text-[10px] font-bold text-slate-500 dark:text-blue-300 uppercase tracking-widest mb-1.5 ml-1">ユーザー名</label>
-            <input 
+            <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -104,7 +104,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         <div className="text-left">
           <label className="block text-[10px] font-bold text-slate-500 dark:text-blue-300 uppercase tracking-widest mb-1.5 ml-1">メールアドレス</label>
-          <input 
+          <input
             type="email"
             required
             value={email}
@@ -116,7 +116,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         <div className="text-left">
           <label className="block text-[10px] font-bold text-slate-500 dark:text-blue-300 uppercase tracking-widest mb-1.5 ml-1">パスワード</label>
-          <input 
+          <input
             type="password"
             required
             value={password}
@@ -125,16 +125,16 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             className="w-full bg-slate-100 dark:bg-[#0B1221]/60 border border-slate-200 dark:border-blue-800/30 rounded-xl py-3.5 px-4 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-blue-400/20 focus:ring-2 focus:ring-primary outline-none transition-all"
           />
         </div>
-        
-        <button 
+
+        <button
           type="submit"
           className="w-full bg-primary text-slate-900 font-black text-base py-4 rounded-xl shadow-[0_0_20px_rgba(242,194,79,0.3)] hover:shadow-[0_0_30px_rgba(242,194,79,0.5)] active:scale-[0.98] transition-all duration-300 mt-6"
         >
           {isSignUp ? '登録する' : 'ログインする'}
         </button>
-        
+
         <div className="pt-4">
-          <button 
+          <button
             type="button"
             onClick={() => setIsSignUp(!isSignUp)}
             className="text-xs font-bold text-blue-500 dark:text-blue-400 hover:underline"
