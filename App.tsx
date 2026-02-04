@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { User, LogEntry, ThemeType } from './types';
-import { getUser, saveUser, getLogs, saveLogs, INITIAL_LOGS, getTheme, saveTheme } from './store';
+import { getUser, saveUser, getLogs, saveLogs, getTheme, saveTheme } from './store';
 
 // Components
 import RecordPage from './components/RecordPage';
@@ -18,7 +18,7 @@ const AppContent: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastEntry, setLastEntry] = useState<LogEntry | null>(null);
   const [theme, setTheme] = useState<ThemeType>(getTheme());
-  
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -36,10 +36,17 @@ const AppContent: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    const storedLogs = getLogs();
-    if (storedLogs.length === 0 && user) {
-      setLogs(INITIAL_LOGS);
-      saveLogs(INITIAL_LOGS);
+    if (!user) {
+      setLogs([]);
+      setLastEntry(null);
+      return;
+    }
+
+    const storedLogs = getLogs(user.id);
+    if (storedLogs.length === 0) {
+      // 新規ユーザーは常に空配列から開始（デフォルトログは挿入しない）
+      setLogs([]);
+      saveLogs([], user.id);
     } else {
       setLogs(storedLogs);
     }
@@ -54,6 +61,8 @@ const AppContent: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     saveUser(null);
+    setLogs([]);
+    setLastEntry(null);
     navigate('/login');
   };
 
@@ -63,11 +72,29 @@ const AppContent: React.FC = () => {
   };
 
   const handleRecord = (entry: LogEntry) => {
-    const updatedLogs = [entry, ...logs];
+    if (!user) return;
+    const entryWithUser = { ...entry, userId: user.id };
+    const updatedLogs = [entryWithUser, ...logs];
     setLogs(updatedLogs);
-    saveLogs(updatedLogs);
-    setLastEntry(entry);
+    saveLogs(updatedLogs, user.id);
+    setLastEntry(entryWithUser);
     navigate('/success');
+  };
+
+  const handleUpdateLog = (logId: string, patch: Partial<LogEntry>) => {
+    if (!user) return;
+    const updatedLogs = logs.map(l => l.id === logId ? { ...l, ...patch, id: l.id, userId: user.id } : l);
+    setLogs(updatedLogs);
+    saveLogs(updatedLogs, user.id);
+    setLastEntry(prev => (prev && prev.id === logId) ? { ...prev, ...patch, id: prev.id, userId: user.id } : prev);
+  };
+
+  const handleDeleteLog = (logId: string) => {
+    if (!user) return;
+    const updatedLogs = logs.filter(l => l.id !== logId);
+    setLogs(updatedLogs);
+    saveLogs(updatedLogs, user.id);
+    setLastEntry(prev => (prev && prev.id === logId) ? null : prev);
   };
 
   const toggleTheme = () => {
@@ -81,20 +108,25 @@ const AppContent: React.FC = () => {
   const isFullscreenView = ['/login', '/success'].includes(location.pathname);
 
   return (
-    <div className={`relative min-h-screen transition-colors duration-500 ${theme === 'dark' ? 'bg-background-dark text-white' : 'bg-slate-50 text-slate-900'} overflow-x-hidden flex flex-col md:flex-row`}>
+    <div
+      key={user ? 'auth-mode' : 'guest-mode'}
+      className={`relative z-0 isolate min-h-screen transition-colors duration-500 ${theme === 'dark' ? 'bg-background-dark text-white' : 'bg-slate-50 text-slate-900'} overflow-x-hidden flex flex-col md:flex-row`}
+    >
       {/* Universal Space Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <img 
-          src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbw0Y_C9rFRbtY0st_18IbMUEaKuoHI6WDDAPkPmcXNZ030qzttwOIMo4Yk7CNSfw0CCoQD17dUrPiYhLyPCRTSkY8ctBTOtjWF1Zd2--dxF-rB_eJ9PgfKOA7ilVj56V43esk2w6DMBl7Pmwslt8HlsrpHW0Nc6I5EZLg_pe4oOW4hk8zsUZHJlKx_bE5qqFuj5WGocypesIBaO4VJP4et9JuUS5IQO_rbmqORoXXcAqCQXMQwCGtGYxgERK5zHlRhW5O5YCFXKTK" 
+      <div aria-hidden className="fixed inset-0 -z-10 pointer-events-none overflow-hidden select-none">
+        <img
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbw0Y_C9rFRbtY0st_18IbMUEaKuoHI6WDDAPkPmcXNZ030qzttwOIMo4Yk7CNSfw0CCoQD17dUrPiYhLyPCRTSkY8ctBTOtjWF1Zd2--dxF-rB_eJ9PgfKOA7ilVj56V43esk2w6DMBl7Pmwslt8HlsrpHW0Nc6I5EZLg_pe4oOW4hk8zsUZHJlKx_bE5qqFuj5WGocypesIBaO4VJP4et9JuUS5IQO_rbmqORoXXcAqCQXMQwCGtGYxgERK5zHlRhW5O5YCFXKTK"
           alt="Space"
-          className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-1000 ${theme === 'dark' ? 'opacity-30' : 'opacity-10'} mix-blend-multiply md:mix-blend-lighten`}
+          className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-1000 pointer-events-none select-none ${theme === 'dark' ? 'opacity-30' : 'opacity-10'} mix-blend-multiply md:mix-blend-lighten`}
         />
-        <div className={`absolute inset-0 transition-all duration-1000 ${theme === 'dark' ? 'bg-gradient-to-b from-blue-900/10 via-background-dark/80 to-background-dark' : 'bg-gradient-to-b from-blue-100/50 via-slate-50/80 to-slate-50'}`}></div>
+        <div
+          className={`absolute inset-0 transition-all duration-1000 pointer-events-none ${theme === 'dark' ? 'bg-gradient-to-b from-blue-900/10 via-background-dark/80 to-background-dark' : 'bg-gradient-to-b from-blue-100/50 via-slate-50/80 to-slate-50'}`}
+        ></div>
       </div>
 
       {/* Global Theme Toggle Button */}
       {!isFullscreenView && (
-        <button 
+        <button
           onClick={toggleTheme}
           className="fixed top-4 right-4 z-[100] w-12 h-12 rounded-full bg-white/10 dark:bg-white/5 border border-slate-200 dark:border-white/10 backdrop-blur-lg flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all text-slate-800 dark:text-primary"
         >
@@ -111,7 +143,7 @@ const AppContent: React.FC = () => {
           <Routes>
             <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
             <Route path="/" element={<RecordPage onRecord={handleRecord} theme={theme} />} />
-            <Route path="/history" element={<HistoryPage logs={logs} theme={theme} />} />
+            <Route path="/history" element={<HistoryPage logs={logs} theme={theme} onUpdateLog={handleUpdateLog} onDeleteLog={handleDeleteLog} />} />
             <Route path="/analysis" element={<AnalysisPage logs={logs} user={user} theme={theme} />} />
             <Route path="/settings" element={<SettingsPage user={user} onLogout={handleLogout} theme={theme} onThemeChange={(t) => setTheme(t)} onUpdateUser={handleUpdateUser} />} />
             <Route path="/success" element={<SuccessPage entry={lastEntry} user={user} theme={theme} />} />
