@@ -8,6 +8,9 @@ interface AnalysisPageProps {
 }
 
 const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
+  // Debug switch: true にすると棒の高さを 50% 固定にして CSS/レイアウト問題を切り分けできる
+  const DEBUG_FORCE_BAR_HEIGHT_50 = false;
+
   // Base date for navigation (defaults to today)
   const [baseDate, setBaseDate] = useState(new Date());
 
@@ -71,24 +74,13 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
       const shortDate = `${d.getMonth() + 1}/${d.getDate()}`;
       const dayName = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
 
+      // durationMinutes（分）を唯一のソース・オブ・トゥルースとして集計する
       const totalMinutes = logs.reduce((acc, log) => {
         const logDate = new Date(log.timestamp);
         const logDateStr = `${logDate.getFullYear()}-${(logDate.getMonth() + 1).toString().padStart(2, '0')}-${logDate.getDate().toString().padStart(2, '0')}`;
 
         if (logDateStr === dateStr) {
-          let mins = log.durationMinutes;
-          if (typeof mins !== 'number') {
-            // Fallback
-            mins = 0;
-            const hourMatch = log.duration.match(/(\d+(?:\.\d+)?)時間/);
-            if (hourMatch) mins += parseFloat(hourMatch[1]) * 60;
-            const minMatch = log.duration.match(/(\d+(?:\.\d+)?)分/);
-            if (minMatch) mins += parseFloat(minMatch[1]);
-            if (mins === 0) {
-              const raw = parseFloat(log.duration.replace(/[^0-9.]/g, ''));
-              mins = isNaN(raw) ? 0 : (log.duration.includes('分') ? raw : raw * 60);
-            }
-          }
+          const mins = Number.isFinite(log.durationMinutes) ? log.durationMinutes : 0;
           return acc + mins;
         }
         return acc;
@@ -102,6 +94,19 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
         isToday: dateStr === new Date().toISOString().split('T')[0]
       });
     }
+
+    // デバッグ用: 日別minutesと元ログを確認したいときにコメントアウトを外す
+    // console.log('[weeklyStats]', {
+    //   baseWeek: currentWeekMonday.toISOString().slice(0, 10),
+    //   stats,
+    //   logsSnapshot: logs.map(l => ({
+    //     id: l.id,
+    //     durationMinutes: l.durationMinutes,
+    //     duration: l.duration,
+    //     timestamp: l.timestamp,
+    //   })),
+    // });
+
     return stats;
   }, [logs, currentWeekMonday]);
 
@@ -112,8 +117,12 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
   }, [weeklyStats]);
 
   const weeklyScaleMaxMinutes = useMemo(() => {
-    if (weeklyMaxMinutes <= 0) return 0;
-    return weeklyMaxMinutes * 1.2;
+    const baseMaxMinutes = 8 * 60; // 通常の基準: 8h
+    if (weeklyMaxMinutes <= baseMaxMinutes) return baseMaxMinutes;
+
+    // 8h超えの週だけ、2h刻みで上限を拡張する
+    const twoHoursMinutes = 2 * 60;
+    return Math.ceil(weeklyMaxMinutes / twoHoursMinutes) * twoHoursMinutes;
   }, [weeklyMaxMinutes]);
 
   // 2. Learning Style Stats (Localize Labels & Fix Logic)
@@ -121,18 +130,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
     let input = 0, output = 0, both = 0;
 
     logs.forEach(log => {
-      let mins = log.durationMinutes || 0;
-      if (mins === 0) {
-        const hourMatch = log.duration.match(/(\d+(?:\.\d+)?)時間/);
-        if (hourMatch) mins += parseFloat(hourMatch[1]) * 60;
-        // Fallback default only if completely unparseable
-        if (mins === 0 && (log.duration.includes('時間') || log.duration.includes('分'))) {
-          // Try stricter parse if needed, but usually regex catches it.
-          // If truly 0, user might have entered "0時間".
-        }
-        // Don't add default 30 mins just because parsing fails unless essential.
-        // Let's assume 0 if unparseable to avoid "fake" data bars.
-      }
+      const mins = Number.isFinite(log.durationMinutes) ? log.durationMinutes : 0;
 
       if (log.learningType === 'input') input += mins;
       else if (log.learningType === 'output') output += mins;
@@ -221,7 +219,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
             </div>
           </div>
 
-          <div className="flex items-end justify-between h-40 gap-2">
+          <div className="flex items-stretch justify-between h-40 gap-2">
             {weeklyStats.map((day) => {
               // Data-proportional scale: max(day) * 1.2
               // min height ensures visibility for non-zero days
@@ -232,13 +230,25 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
               const heightPercent = day.minutes > 0
                 ? Math.min(Math.max(heightPercentRaw, minVisiblePercent), 100)
                 : 0;
+              const finalHeightPercent = DEBUG_FORCE_BAR_HEIGHT_50 ? 50 : heightPercent;
+
+              if (import.meta.env.DEV) {
+                console.log('[WeeklyBarDebug]', {
+                  date: day.date,
+                  dayMinutes: day.minutes,
+                  weeklyMaxMinutes,
+                  weeklyScaleMaxMinutes,
+                  heightPercent,
+                  finalHeightPercent,
+                });
+              }
 
               return (
-                <div key={day.date} className="flex-1 flex flex-col items-center group relative">
+                <div key={day.date} className="flex-1 h-full flex flex-col items-center group relative">
                   <div className="w-full relative flex-1 flex items-end bg-slate-100 dark:bg-white/5 rounded-t-lg overflow-hidden">
                     <div
-                      style={{ height: `${heightPercent}%` }}
-                      className={`w-full relative min-h-[4px] transition-all duration-700 ease-out ${day.isToday ? 'bg-gradient-to-t from-blue-600 to-cyan-400' : 'bg-gradient-to-t from-blue-400/70 to-blue-300/70 dark:from-blue-500/50 dark:to-blue-400/50'}`}
+                      style={{ height: `${finalHeightPercent}%` }}
+                      className={`w-full relative transition-all duration-700 ease-out ${day.isToday ? 'bg-gradient-to-t from-blue-600 to-cyan-400' : 'bg-gradient-to-t from-blue-400/70 to-blue-300/70 dark:from-blue-500/50 dark:to-blue-400/50'}`}
                     >
                       {/* Glass shine effect */}
                       <div className="absolute inset-0 bg-white/20"></div>
