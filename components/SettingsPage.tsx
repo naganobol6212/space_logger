@@ -10,13 +10,12 @@ interface SettingsPageProps {
   onUpdateUser: (user: User) => void;
 }
 
-type SettingsView = 'menu' | 'profile' | 'notifications' | 'theme' | 'github';
+type SettingsView = 'menu' | 'profile' | 'theme' | 'github';
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onThemeChange, onUpdateUser }) => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const [userName, setUserName] = useState(user?.name || '');
   const [userAvatar, setUserAvatar] = useState(user?.avatar || '');
-  const [notifications, setNotifications] = useState({ email: true, push: false, weekly: true });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const [githubUsername, setGithubUsername] = useState(user?.githubUsername || '');
@@ -118,30 +117,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
           </div>
         );
 
-      case 'notifications':
-        return (
-          <div className="space-y-2 animate-fade-in-up">
-            {[
-              { id: 'email', label: 'メールレポート', desc: '週次サマリーを受け取る', val: notifications.email },
-              { id: 'push', label: 'プッシュ通知', desc: '学習忘れ防止リマインダー', val: notifications.push },
-              { id: 'weekly', label: 'ウィークリーチャレンジ', desc: '新しい目標の通知', val: notifications.weekly },
-            ].map(item => (
-              <div key={item.id} className="flex items-center justify-between p-5 bg-white/50 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/5">
-                <div>
-                  <p className="font-bold text-sm text-slate-800 dark:text-gray-200">{item.label}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-gray-500">{item.desc}</p>
-                </div>
-                <button
-                  onClick={() => setNotifications({ ...notifications, [item.id as keyof typeof notifications]: !item.val })}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${item.val ? 'bg-primary' : 'bg-slate-300 dark:bg-gray-700'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${item.val ? 'left-7' : 'left-1'}`}></div>
-                </button>
-              </div>
-            ))}
-          </div>
-        );
-
       case 'theme':
         return (
           <div className="grid grid-cols-1 gap-4 animate-fade-in-up">
@@ -235,7 +210,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
           <div className="space-y-4">
             {[
               { id: 'profile', label: 'プロフィール編集', sub: '名前・アバター設定', icon: 'person', color: 'text-blue-500' },
-              { id: 'notifications', label: '通知設定', sub: 'リマインダーと更新', icon: 'notifications', color: 'text-purple-500' },
               { id: 'theme', label: 'テーマ設定', sub: '外観のカスタマイズ', icon: theme === 'dark' ? 'dark_mode' : 'light_mode', color: 'text-amber-500' },
               { id: 'github', label: 'GitHub連携', sub: 'コミットの同期', icon: 'hub', color: 'text-slate-400' },
             ].map(item => (
@@ -285,8 +259,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500 dark:from-white dark:to-blue-200 drop-shadow-sm">
               {currentView === 'menu' ? '設定' :
                 currentView === 'profile' ? 'プロフィール' :
-                  currentView === 'notifications' ? '通知' :
-                    currentView === 'theme' ? 'テーマ' : 'GitHub'}
+                  currentView === 'theme' ? 'テーマ' : 'GitHub'}
             </h1>
             <p className="text-[10px] text-blue-500 dark:text-blue-300 font-bold mt-1 tracking-widest uppercase">CONFIGURATION</p>
           </div>

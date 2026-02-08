@@ -3,6 +3,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogEntry, User, ThemeType } from '../types';
 import { syncLogToGitHub } from '../store';
+import { getTagById } from '../constants/tags';
 
 interface SuccessPageProps {
   entry: LogEntry | null;
@@ -15,6 +16,12 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
   const navigate = useNavigate();
   const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = React.useState('');
+  const learningTypeLabel = entry?.learningType === 'input'
+    ? 'インプット'
+    : entry?.learningType === 'output'
+      ? 'アウトプット'
+      : 'インプット＋アウトプット';
+  const tagLabels = (entry?.tags || []).map(tagId => getTagById(tagId).label).join(', ');
 
   const handleSync = async () => {
     if (!user) return;
@@ -64,11 +71,17 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
           </div>
         </div>
 
-        <div className="w-full bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center justify-center gap-3">
-          <span className="material-symbols-outlined text-orange-400 filled animate-pulse">local_fire_department</span>
-          <div className="flex flex-col items-start leading-none">
-            <span className="text-[10px] text-orange-200 uppercase tracking-widest font-bold">Current Streak</span>
-            <span className="text-xl font-bold text-white">{user?.streak || 14} Days</span>
+        <div className="w-full bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-400/30 rounded-xl p-4">
+          <p className="text-[10px] text-blue-200 uppercase tracking-widest font-bold mb-2">今回の記録</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+            <p className="text-white/60">学習タイプ</p>
+            <p className="text-white font-bold text-right">{learningTypeLabel}</p>
+            <p className="text-white/60">タグ</p>
+            <p className="text-white font-bold text-right truncate">{tagLabels || '未設定'}</p>
+            <p className="text-white/60">時間</p>
+            <p className="text-white font-bold text-right">{entry?.duration || '未設定'}</p>
+            <p className="text-white/60">メモ</p>
+            <p className="text-white font-bold text-right truncate">{entry?.memo || 'なし'}</p>
           </div>
         </div>
       </div>
@@ -96,9 +109,9 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
             ) : syncStatus === 'success' ? (
               <span className="material-symbols-outlined">check</span>
             ) : (
-              <span className="material-symbols-outlined">public</span>
+              <span className="material-symbols-outlined">deployed_code</span>
             )}
-            <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'success' ? 'Synced' : 'Sync to Earth'}</span>
+            <span>{syncStatus === 'syncing' ? 'GitHubへ同期中...' : syncStatus === 'success' ? 'GitHub同期完了（草が生えます）' : 'GitHubに同期して草を生やす'}</span>
           </button>
         )}
       </div>

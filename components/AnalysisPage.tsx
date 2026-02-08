@@ -56,6 +56,22 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
     return viewMonday.getTime() === thisMonday.getTime();
   }, [baseDate]);
 
+  // 表示中の週（月曜 00:00 〜 翌週月曜 00:00）に含まれるログだけを抽出
+  const weeklyLogs = useMemo(() => {
+    const weekStart = new Date(currentWeekMonday);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7); // exclusive
+
+    return logs.filter((log) => {
+      const ts = new Date(log.timestamp);
+      const time = ts.getTime();
+      if (!Number.isFinite(time)) return false;
+      return time >= weekStart.getTime() && time < weekEnd.getTime();
+    });
+  }, [logs, currentWeekMonday]);
+
 
   // 1. Weekly Stats (Based on currentWeekMonday)
   const weeklyStats = useMemo(() => {
@@ -75,7 +91,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
       const dayName = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
 
       // durationMinutes（分）を唯一のソース・オブ・トゥルースとして集計する
-      const totalMinutes = logs.reduce((acc, log) => {
+      const totalMinutes = weeklyLogs.reduce((acc, log) => {
         const logDate = new Date(log.timestamp);
         const logDateStr = `${logDate.getFullYear()}-${(logDate.getMonth() + 1).toString().padStart(2, '0')}-${logDate.getDate().toString().padStart(2, '0')}`;
 
@@ -108,7 +124,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
     // });
 
     return stats;
-  }, [logs, currentWeekMonday]);
+  }, [weeklyLogs, currentWeekMonday]);
 
   // Weekly bar scale: max(day) * 1.2 (minutes)
   const weeklyMaxMinutes = useMemo(() => {
@@ -129,7 +145,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
   const learningStyleStats = useMemo(() => {
     let input = 0, output = 0, both = 0;
 
-    logs.forEach(log => {
+    weeklyLogs.forEach(log => {
       const mins = Number.isFinite(log.durationMinutes) ? log.durationMinutes : 0;
 
       if (log.learningType === 'input') input += mins;
@@ -145,7 +161,7 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
       output: { percent: (output / total) * 100, minutes: output },
       both: { percent: (both / total) * 100, minutes: both }
     };
-  }, [logs]);
+  }, [weeklyLogs]);
 
   // Pie Chart Gradient
   const pieGradient = useMemo(() => {
@@ -167,7 +183,11 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
   }, [learningStyleStats]);
 
 
-  const totalHours = weeklyStats.reduce((acc, cur) => acc + cur.minutes, 0) / 60;
+  const weeklyTotalMinutes = useMemo(
+    () => weeklyStats.reduce((acc, cur) => acc + cur.minutes, 0),
+    [weeklyStats]
+  );
+  const totalHours = weeklyTotalMinutes / 60;
 
   // Format Date Range for Display
   const dateRangeString = useMemo(() => {
@@ -330,13 +350,13 @@ const AnalysisPage: React.FC<AnalysisPageProps> = ({ logs, user, theme }) => {
             <div className="glass-panel bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center shadow-sm">
               <span className="material-symbols-outlined mb-2 text-cyan-500">auto_awesome</span>
               <p className="text-[10px] text-slate-500 dark:text-gray-500 uppercase font-bold">総学習回数</p>
-              <p className="text-2xl font-black text-slate-800 dark:text-white">{logs.length}</p>
+              <p className="text-2xl font-black text-slate-800 dark:text-white">{weeklyLogs.length}</p>
             </div>
             <div className="glass-panel bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center shadow-sm">
               <span className="material-symbols-outlined mb-2 text-amber-500">timer</span>
               <p className="text-[10px] text-slate-500 dark:text-gray-500 uppercase font-bold">週間平均 ({dateRangeString ? '7d' : '-'})</p>
               <p className="text-2xl font-black text-slate-800 dark:text-white">
-                {((weeklyStats.reduce((acc, d) => acc + d.minutes, 0) / 7) / 60).toFixed(1)}<span className="text-xs ml-1 font-bold text-slate-400">h</span>
+                {((weeklyTotalMinutes / 7) / 60).toFixed(1)}<span className="text-xs ml-1 font-bold text-slate-400">h</span>
               </p>
             </div>
             <div className="glass-panel bg-white/80 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center shadow-sm col-span-2">
