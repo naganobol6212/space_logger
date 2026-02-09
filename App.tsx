@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { User, LogEntry, ThemeType } from './types';
 import { getUser, saveUser, getLogs, saveLogs, getTheme, saveTheme } from './store';
 import {
   createLogInSupabase,
   deleteLogInSupabase,
   fetchLogsFromSupabase,
+  getCurrentSession,
   getAccessToken,
+  getSupabaseConfigDebug,
   getOrCreateUserFromSession,
-  getStoredSession,
-  hydrateSessionFromUrl,
   isSupabaseConfigured,
+  onSupabaseAuthStateChange,
   signOutSupabase,
   updateLogInSupabase,
   upsertProfile,
@@ -52,24 +53,60 @@ const AppContent: React.FC = () => {
   // Supabase セッション初期化（OAuthリダイレクト復元を含む）
   useEffect(() => {
     let active = true;
-    const initAuth = async () => {
-      if (!isSupabaseConfigured) return;
-      try {
-        await hydrateSessionFromUrl();
-        const session = getStoredSession();
-        if (!session) {
-          if (active) {
-            setUser(null);
-            setAuthReady(true);
-          }
-          return;
-        }
+    let unsubscribe = () => {};
 
-        const appUser = await getOrCreateUserFromSession(session);
-        if (active) {
-          setUser(appUser);
-          saveUser(appUser);
-          setAuthReady(true);
+    const applySession = async (session: Awaited<ReturnType<typeof getCurrentSession>>) => {
+      if (!active) return;
+      if (!session) {
+        setUser(null);
+        saveUser(null);
+        setAuthReady(true);
+        return;
+      }
+
+      const appUser = await getOrCreateUserFromSession(session);
+      if (!active) return;
+      setUser(prev => {
+        if (prev && appUser && prev.id === appUser.id) return prev;
+        return appUser;
+      });
+      saveUser(appUser);
+      setAuthReady(true);
+    };
+
+    const initAuth = async () => {
+      console.log('[Auth][AppContent.initAuth] start', getSupabaseConfigDebug());
+      if (!isSupabaseConfigured) {
+        if (active) setAuthReady(true);
+        return;
+      }
+      try {
+        const hasOAuthCodeInUrl = new URLSearchParams(window.location.search).has('code');
+        console.log('[Auth][AppContent.initAuth] url state', {
+          hasOAuthCodeInUrl,
+          pathname: window.location.pathname,
+          search: window.location.search,
+        });
+
+        unsubscribe = onSupabaseAuthStateChange(async (session) => {
+          console.log('[Auth][AppContent.onAuthStateChange]', {
+            hasSession: Boolean(session),
+            hasAccessToken: Boolean(session?.access_token),
+            userId: session?.user?.id || null,
+          });
+          await applySession(session);
+        });
+
+        // PKCE code がURLにある直後は detectSessionInUrl に交換処理を任せる。
+        // ここで getSession を即時実行すると交換と競合し、401 の原因になることがある。
+        if (!hasOAuthCodeInUrl) {
+          const currentSession = await getCurrentSession();
+          console.log('[Auth][AppContent.initAuth] current session', {
+            hasSession: Boolean(currentSession),
+            hasAccessToken: Boolean(currentSession?.access_token),
+            userId: currentSession?.user?.id || null,
+          });
+          await applySession(currentSession);
         }
       } catch (error) {
         console.error('Failed to initialize auth:', error);
@@ -79,6 +116,7 @@ const AppContent: React.FC = () => {
     initAuth();
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 
@@ -93,7 +131,7 @@ const AppContent: React.FC = () => {
 
     const loadLogs = async () => {
       if (isSupabaseConfigured) {
-        const token = getAccessToken();
+        const token = await getAccessToken();
         if (token) {
           try {
             const remoteLogs = await fetchLogsFromSupabase(user.id, token);
@@ -126,6 +164,9 @@ const AppContent: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
+    // ログイン画面にいるときだけトップへ遷移する。
+    // これを無条件にすると、onAuthStateChange の再発火時に
+    // /history, /analysis, /settings, /success への遷移が打ち消される。
     if (user && location.pathname === '/login') {
       navigate('/', { replace: true });
     }
@@ -155,7 +196,7 @@ const AppContent: React.FC = () => {
 
   const handleUpdateUser = async (updatedUser: User) => {
     if (isSupabaseConfigured) {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (!token) {
         alert('認証セッションが切れています。再ログインしてください。');
         return;
@@ -173,18 +214,21 @@ const AppContent: React.FC = () => {
   };
 
   const handleRecord = async (entry: LogEntry) => {
+    console.log('[Record][handleRecord] start', { hasUser: Boolean(user), entryId: entry.id });
     if (!user) return;
     const entryWithUser = { ...entry, userId: user.id };
 
     if (isSupabaseConfigured) {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (!token) {
+        console.warn('[Record][handleRecord] no access token');
         alert('認証セッションが切れています。再ログインしてください。');
         return;
       }
       try {
         await createLogInSupabase(entryWithUser, user.id, token);
       } catch (error) {
+        console.error('[Record][handleRecord] createLogInSupabase failed', error);
         const message = error instanceof Error ? error.message : '学習ログの保存に失敗しました。';
         alert(message);
         return;
@@ -195,6 +239,7 @@ const AppContent: React.FC = () => {
     setLogs(updatedLogs);
     saveLogs(updatedLogs, user.id);
     setLastEntry(entryWithUser);
+    console.log('[Record][handleRecord] navigate to /success');
     navigate('/success');
   };
 
@@ -202,7 +247,7 @@ const AppContent: React.FC = () => {
     if (!user) return;
 
     if (isSupabaseConfigured) {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (!token) {
         alert('認証セッションが切れています。再ログインしてください。');
         return;
@@ -226,7 +271,7 @@ const AppContent: React.FC = () => {
     if (!user) return;
 
     if (isSupabaseConfigured) {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (!token) {
         alert('認証セッションが切れています。再ログインしてください。');
         return;
@@ -314,9 +359,9 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AppContent />
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 

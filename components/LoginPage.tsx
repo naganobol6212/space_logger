@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { User } from '../types';
 import {
   getOrCreateUserFromSession,
   isSupabaseConfigured,
@@ -19,6 +20,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,14 +67,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
-  const handleGitHubLogin = () => {
+  const handleGitHubLogin = async () => {
     setError('');
+    if (oauthLoading) return;
     if (!isSupabaseConfigured) {
       setError('Supabase設定が未完了です。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。');
       return;
     }
-    const redirectTo = `${window.location.origin}/login`;
-    startGitHubOAuth(redirectTo);
+    try {
+      setOauthLoading(true);
+      await startGitHubOAuth();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'GitHubログインの開始に失敗しました。';
+      setError(message);
+      setOauthLoading(false);
+    }
   };
 
   return (
@@ -151,11 +160,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <button
           type="button"
           onClick={handleGitHubLogin}
-          disabled={loading}
+          disabled={loading || oauthLoading}
           className="w-full bg-slate-800 text-white font-bold text-sm py-3 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-sm">hub</span>
-          GitHubでログイン
+          {oauthLoading ? 'GitHubへ遷移中...' : 'GitHubでログイン'}
         </button>
 
         <div className="pt-4">

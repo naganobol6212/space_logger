@@ -1,21 +1,6 @@
+import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { LogEntry, User } from './types';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-const SESSION_KEY = 'space_logger_supabase_session';
-
-interface AuthUser {
-  id: string;
-  email?: string;
-  user_metadata?: Record<string, unknown>;
-}
-
-interface AuthSession {
-  access_token: string;
-  refresh_token?: string;
-  expires_in?: number;
-  user?: AuthUser;
-}
+import { getSupabaseConfigDebug, isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from './lib/supabaseClient';
 
 interface ProfileRow {
   id: string;
@@ -41,13 +26,26 @@ interface LogRow {
   category: 'Frontend' | 'Backend' | 'Infrastructure' | 'Design';
 }
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export { getSupabaseConfigDebug, isSupabaseConfigured };
+
+export interface GitHubAuthStatus {
+  isGithubOAuth: boolean;
+  providerToken: string | null;
+  oauthUsername: string | null;
+}
 
 const ensureConfig = () => {
   if (!isSupabaseConfigured || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
   }
   return { SUPABASE_URL, SUPABASE_ANON_KEY };
+};
+
+const ensureSupabaseClient = () => {
+  if (!supabase) {
+    throw new Error('Supabase client is not initialized.');
+  }
+  return supabase;
 };
 
 const authHeaders = (accessToken?: string) => {
@@ -59,16 +57,23 @@ const authHeaders = (accessToken?: string) => {
   };
 };
 
-const mapProfileToUser = (profile: ProfileRow | null, authUser: AuthUser): User => {
-  const metadataName = typeof authUser.user_metadata?.name === 'string' ? authUser.user_metadata.name : '';
-  const metadataAvatar = typeof authUser.user_metadata?.avatar_url === 'string' ? authUser.user_metadata.avatar_url : '';
+const mapProfileToUser = (profile: ProfileRow | null, authUser: SupabaseAuthUser): User => {
+  const metadata = authUser.user_metadata || {};
+  const metadataName = typeof metadata.name === 'string' ? metadata.name : '';
+  const metadataAvatar = typeof metadata.avatar_url === 'string' ? metadata.avatar_url : '';
+  const metadataGitHubUsername = typeof metadata.user_name === 'string'
+    ? metadata.user_name
+    : typeof metadata.preferred_username === 'string'
+      ? metadata.preferred_username
+      : '';
+
   return {
     id: authUser.id,
     name: profile?.name || metadataName || 'Space Pilot',
     email: profile?.email || authUser.email || '',
     avatar: profile?.avatar || metadataAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}`,
     streak: profile?.streak ?? 0,
-    githubUsername: profile?.github_username || undefined,
+    githubUsername: profile?.github_username || metadataGitHubUsername || undefined,
     githubRepo: profile?.github_repo || undefined,
     githubToken: profile?.github_token || undefined,
   };
@@ -100,118 +105,113 @@ const mapEntryToLogRow = (entry: LogEntry, userId: string): LogRow => ({
   category: entry.category || 'Frontend',
 });
 
-export const getStoredSession = (): AuthSession | null => {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthSession;
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
+export const getCurrentSession = async (): Promise<Session | null> => {
+  if (!isSupabaseConfigured) return null;
+  const client = ensureSupabaseClient();
+  const { data, error } = await client.auth.getSession();
+  if (error) throw new Error(error.message);
+  return data.session;
 };
 
-export const saveSession = (session: AuthSession | null) => {
-  if (!session) {
-    localStorage.removeItem(SESSION_KEY);
-    return;
+export const getGitHubAuthStatus = async (): Promise<GitHubAuthStatus> => {
+  if (!isSupabaseConfigured) {
+    return { isGithubOAuth: false, providerToken: null, oauthUsername: null };
   }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+
+  const session = await getCurrentSession();
+  const authUser = session?.user || await fetchAuthUser();
+  if (!authUser) {
+    return { isGithubOAuth: false, providerToken: null, oauthUsername: null };
+  }
+
+  const appProvider = typeof authUser.app_metadata?.provider === 'string'
+    ? authUser.app_metadata.provider
+    : null;
+  const identities = Array.isArray(authUser.identities) ? authUser.identities : [];
+  const githubIdentity = identities.find((identity) => identity?.provider === 'github');
+  const isGithubOAuth = appProvider === 'github' || Boolean(githubIdentity);
+
+  const identityData = githubIdentity?.identity_data as Record<string, unknown> | undefined;
+  const oauthUsername = (typeof authUser.user_metadata?.user_name === 'string'
+    ? authUser.user_metadata.user_name
+    : typeof authUser.user_metadata?.preferred_username === 'string'
+      ? authUser.user_metadata.preferred_username
+      : typeof identityData?.user_name === 'string'
+        ? identityData.user_name
+        : typeof identityData?.login === 'string'
+          ? identityData.login
+          : null);
+
+  const providerToken = typeof (session as Session & { provider_token?: string }).provider_token === 'string'
+    ? (session as Session & { provider_token?: string }).provider_token!
+    : null;
+
+  return {
+    isGithubOAuth,
+    providerToken,
+    oauthUsername,
+  };
+};
+
+export const onSupabaseAuthStateChange = (callback: (session: Session | null) => void) => {
+  if (!isSupabaseConfigured) return () => {};
+  const client = ensureSupabaseClient();
+  const { data } = client.auth.onAuthStateChange((_event, session) => {
+    callback(session);
+  });
+  return () => data.subscription.unsubscribe();
 };
 
 export const signOutSupabase = async () => {
   if (!isSupabaseConfigured) return;
-  const session = getStoredSession();
-  const { SUPABASE_URL } = ensureConfig();
-  if (session?.access_token) {
-    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-      method: 'POST',
-      headers: authHeaders(session.access_token),
-    });
-  }
-  saveSession(null);
+  const client = ensureSupabaseClient();
+  const { error } = await client.auth.signOut();
+  if (error) throw new Error(error.message);
 };
 
-export const startGitHubOAuth = (redirectTo: string) => {
-  const { SUPABASE_URL } = ensureConfig();
-  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(redirectTo)}`;
-  window.location.assign(url);
-};
-
-export const hydrateSessionFromUrl = async (): Promise<AuthSession | null> => {
-  if (!isSupabaseConfigured) return null;
-  const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
-  if (!hash) return null;
-  const params = new URLSearchParams(hash);
-  const accessToken = params.get('access_token');
-  const refreshToken = params.get('refresh_token') || undefined;
-  const expiresIn = Number(params.get('expires_in') || 0) || undefined;
-  if (!accessToken) return null;
-
-  const user = await fetchAuthUser(accessToken);
-  const nextSession: AuthSession = {
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    expires_in: expiresIn,
-    user: user || undefined,
-  };
-  saveSession(nextSession);
-  if (window.location.hash) {
-    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
-  }
-  return nextSession;
-};
-
-export const signInWithPassword = async (email: string, password: string): Promise<AuthSession> => {
-  const { SUPABASE_URL } = ensureConfig();
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ email, password }),
+export const startGitHubOAuth = async () => {
+  const client = ensureSupabaseClient();
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'github',
+    options: {
+      redirectTo: window.location.origin,
+    },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error_description || data?.msg || 'ログインに失敗しました');
-  const session: AuthSession = {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: data.expires_in,
-    user: data.user,
-  };
-  saveSession(session);
-  return session;
+  if (error) throw new Error(error.message);
+};
+
+export const signInWithPassword = async (email: string, password: string): Promise<Session> => {
+  const client = ensureSupabaseClient();
+  const { data, error } = await client.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
+  if (!data.session) throw new Error('ログインセッションの取得に失敗しました');
+  return data.session;
 };
 
 export const signUpWithPassword = async (email: string, password: string, name: string) => {
-  const { SUPABASE_URL } = ensureConfig();
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ email, password, data: { name } }),
+  const client = ensureSupabaseClient();
+  const { data, error } = await client.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { name },
+    },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error_description || data?.msg || '新規登録に失敗しました');
-
-  const session: AuthSession | null = data?.access_token ? {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: data.expires_in,
-    user: data.user,
-  } : null;
-  saveSession(session);
-  return { session, user: data.user as AuthUser | undefined };
+  if (error) throw new Error(error.message);
+  return { session: data.session, user: data.user };
 };
 
-export const fetchAuthUser = async (accessToken: string): Promise<AuthUser | null> => {
-  const { SUPABASE_URL } = ensureConfig();
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: authHeaders(accessToken),
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as AuthUser;
+export const fetchAuthUser = async (accessToken?: string): Promise<SupabaseAuthUser | null> => {
+  const client = ensureSupabaseClient();
+  const { data, error } = accessToken
+    ? await client.auth.getUser(accessToken)
+    : await client.auth.getUser();
+  if (error) return null;
+  return data.user;
 };
 
-export const getAccessToken = (): string | null => {
-  const session = getStoredSession();
+export const getAccessToken = async (): Promise<string | null> => {
+  const session = await getCurrentSession();
   return session?.access_token || null;
 };
 
@@ -255,24 +255,34 @@ export const upsertProfile = async (user: User, accessToken: string): Promise<Pr
   return rows[0];
 };
 
-export const getOrCreateUserFromSession = async (session: AuthSession): Promise<User | null> => {
-  if (!session.access_token) return null;
+export const getOrCreateUserFromSession = async (session: Session): Promise<User | null> => {
   const authUser = session.user || await fetchAuthUser(session.access_token);
   if (!authUser) return null;
 
-  const existingProfile = await getProfile(authUser.id, session.access_token);
-  if (existingProfile) {
-    return mapProfileToUser(existingProfile, authUser);
+  try {
+    const existingProfile = await getProfile(authUser.id, session.access_token);
+    if (existingProfile) {
+      return mapProfileToUser(existingProfile, authUser);
+    }
+  } catch (error) {
+    console.error('Profile fetch failed. Continue with auth user fallback.', error);
   }
 
+  const metadata = authUser.user_metadata || {};
   const newUser: User = {
     id: authUser.id,
-    name: (authUser.user_metadata?.name as string) || 'Space Pilot',
+    name: (metadata.name as string) || 'Space Pilot',
     email: authUser.email || '',
-    avatar: (authUser.user_metadata?.avatar_url as string) || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}`,
+    avatar: (metadata.avatar_url as string) || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authUser.id}`,
     streak: 0,
   };
-  await upsertProfile(newUser, session.access_token);
+
+  try {
+    await upsertProfile(newUser, session.access_token);
+  } catch (error) {
+    console.error('Profile upsert failed. Continue with fallback user.', error);
+  }
+
   return newUser;
 };
 
