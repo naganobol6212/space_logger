@@ -1,7 +1,12 @@
 
 import React, { useState } from 'react';
-import { User } from '../types';
-import { getUsersDB, registerUser } from '../store';
+import {
+  getOrCreateUserFromSession,
+  isSupabaseConfigured,
+  signInWithPassword,
+  signUpWithPassword,
+  startGitHubOAuth,
+} from '../supabase';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
@@ -13,52 +18,61 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (isSignUp) {
-      if (!name || !email || !password) {
-        setError('すべての項目を入力してください');
-        return;
-      }
-
-      const newUser: User = {
-        id: Date.now().toString(),
-        name,
-        email,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
-        streak: 0
-      };
-
-      if (registerUser(newUser)) {
-        onLogin(newUser);
-      } else {
-        setError('このメールアドレスは既に登録されています');
-      }
-    } else {
-      const db = getUsersDB();
-      const user = db.find(u => u.email === email);
-
-      // デモ用：パスワード検証は省略
-      if (user) {
-        onLogin(user);
-      } else {
-        // デフォルトユーザーのフォールバック（デモ用）
-        if (email === 'demo@example.com') {
-          onLogin({
-            id: 'demo',
-            name: 'デモパイロット',
-            email: 'demo@example.com',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Demo',
-            streak: 5
-          });
-        } else {
-          setError('ユーザーが見つかりません。新規登録してください。');
-        }
-      }
+    if (!isSupabaseConfigured) {
+      setError('Supabase設定が未完了です。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。');
+      return;
     }
+
+    setLoading(true);
+    try {
+      if (isSignUp) {
+        if (!name || !email || !password) {
+          setError('すべての項目を入力してください');
+          return;
+        }
+
+        const { session } = await signUpWithPassword(email, password, name);
+        if (!session) {
+          setError('確認メールを送信しました。メール認証後にログインしてください。');
+          return;
+        }
+        const appUser = await getOrCreateUserFromSession(session);
+        if (!appUser) {
+          setError('ユーザー情報の作成に失敗しました。');
+          return;
+        }
+        onLogin(appUser);
+      } else {
+        const session = await signInWithPassword(email, password);
+        const appUser = await getOrCreateUserFromSession(session);
+        if (!appUser) {
+          setError('ユーザー情報の取得に失敗しました。');
+          return;
+        }
+        onLogin(appUser);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '認証に失敗しました';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGitHubLogin = () => {
+    setError('');
+    if (!isSupabaseConfigured) {
+      setError('Supabase設定が未完了です。VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY を設定してください。');
+      return;
+    }
+    const redirectTo = `${window.location.origin}/login`;
+    startGitHubOAuth(redirectTo);
   };
 
   return (
@@ -128,9 +142,20 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         <button
           type="submit"
+          disabled={loading}
           className="w-full bg-primary text-slate-900 font-black text-base py-4 rounded-xl shadow-[0_0_20px_rgba(242,194,79,0.3)] hover:shadow-[0_0_30px_rgba(242,194,79,0.5)] active:scale-[0.98] transition-all duration-300 mt-6"
         >
-          {isSignUp ? '登録する' : 'ログインする'}
+          {loading ? '処理中...' : isSignUp ? '登録する' : 'ログインする'}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleGitHubLogin}
+          disabled={loading}
+          className="w-full bg-slate-800 text-white font-bold text-sm py-3 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">hub</span>
+          GitHubでログイン
         </button>
 
         <div className="pt-4">

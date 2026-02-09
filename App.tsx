@@ -3,6 +3,19 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { User, LogEntry, ThemeType } from './types';
 import { getUser, saveUser, getLogs, saveLogs, getTheme, saveTheme } from './store';
+import {
+  createLogInSupabase,
+  deleteLogInSupabase,
+  fetchLogsFromSupabase,
+  getAccessToken,
+  getOrCreateUserFromSession,
+  getStoredSession,
+  hydrateSessionFromUrl,
+  isSupabaseConfigured,
+  signOutSupabase,
+  updateLogInSupabase,
+  upsertProfile,
+} from './supabase';
 
 // Components
 import RecordPage from './components/RecordPage';
@@ -14,10 +27,11 @@ import LoginPage from './components/LoginPage';
 import Navigation from './components/Navigation';
 
 const AppContent: React.FC = () => {
-  const [user, setUser] = useState<User | null>(getUser());
+  const [user, setUser] = useState<User | null>(isSupabaseConfigured ? null : getUser());
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastEntry, setLastEntry] = useState<LogEntry | null>(null);
   const [theme, setTheme] = useState<ThemeType>(getTheme());
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,30 +49,103 @@ const AppContent: React.FC = () => {
     saveTheme(theme);
   }, [theme]);
 
+  // Supabase セッション初期化（OAuthリダイレクト復元を含む）
   useEffect(() => {
+    let active = true;
+    const initAuth = async () => {
+      if (!isSupabaseConfigured) return;
+      try {
+        await hydrateSessionFromUrl();
+        const session = getStoredSession();
+        if (!session) {
+          if (active) {
+            setUser(null);
+            setAuthReady(true);
+          }
+          return;
+        }
+
+        const appUser = await getOrCreateUserFromSession(session);
+        if (active) {
+          setUser(appUser);
+          saveUser(appUser);
+          setAuthReady(true);
+        }
+      } catch (error) {
+        console.error('Failed to initialize auth:', error);
+        if (active) setAuthReady(true);
+      }
+    };
+    initAuth();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
     if (!user) {
       setLogs([]);
       setLastEntry(null);
       return;
     }
 
-    const storedLogs = getLogs(user.id);
-    if (storedLogs.length === 0) {
-      // 新規ユーザーは常に空配列から開始（デフォルトログは挿入しない）
-      setLogs([]);
-      saveLogs([], user.id);
-    } else {
-      setLogs(storedLogs);
-    }
+    const loadLogs = async () => {
+      if (isSupabaseConfigured) {
+        const token = getAccessToken();
+        if (token) {
+          try {
+            const remoteLogs = await fetchLogsFromSupabase(user.id, token);
+            if (active) {
+              setLogs(remoteLogs);
+              saveLogs(remoteLogs, user.id);
+            }
+            return;
+          } catch (error) {
+            console.error('Failed to fetch logs from Supabase. Fallback to local cache.', error);
+          }
+        }
+      }
+
+      const storedLogs = getLogs(user.id);
+      if (active) {
+        if (storedLogs.length === 0) {
+          setLogs([]);
+          saveLogs([], user.id);
+        } else {
+          setLogs(storedLogs);
+        }
+      }
+    };
+    loadLogs();
+
+    return () => {
+      active = false;
+    };
   }, [user]);
+
+  useEffect(() => {
+    if (user && location.pathname === '/login') {
+      navigate('/', { replace: true });
+    }
+  }, [user, location.pathname, navigate]);
 
   const handleLogin = (userData: User) => {
     setUser(userData);
     saveUser(userData);
+    setAuthReady(true);
     navigate('/');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await signOutSupabase();
+      } catch (error) {
+        console.error('Failed to sign out from Supabase:', error);
+      }
+    }
     setUser(null);
     saveUser(null);
     setLogs([]);
@@ -66,14 +153,44 @@ const AppContent: React.FC = () => {
     navigate('/login');
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
+  const handleUpdateUser = async (updatedUser: User) => {
+    if (isSupabaseConfigured) {
+      const token = getAccessToken();
+      if (!token) {
+        alert('認証セッションが切れています。再ログインしてください。');
+        return;
+      }
+      try {
+        await upsertProfile(updatedUser, token);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'プロフィール更新に失敗しました。';
+        alert(message);
+        return;
+      }
+    }
     setUser(updatedUser);
     saveUser(updatedUser);
   };
 
-  const handleRecord = (entry: LogEntry) => {
+  const handleRecord = async (entry: LogEntry) => {
     if (!user) return;
     const entryWithUser = { ...entry, userId: user.id };
+
+    if (isSupabaseConfigured) {
+      const token = getAccessToken();
+      if (!token) {
+        alert('認証セッションが切れています。再ログインしてください。');
+        return;
+      }
+      try {
+        await createLogInSupabase(entryWithUser, user.id, token);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '学習ログの保存に失敗しました。';
+        alert(message);
+        return;
+      }
+    }
+
     const updatedLogs = [entryWithUser, ...logs];
     setLogs(updatedLogs);
     saveLogs(updatedLogs, user.id);
@@ -81,16 +198,48 @@ const AppContent: React.FC = () => {
     navigate('/success');
   };
 
-  const handleUpdateLog = (logId: string, patch: Partial<LogEntry>) => {
+  const handleUpdateLog = async (logId: string, patch: Partial<LogEntry>) => {
     if (!user) return;
+
+    if (isSupabaseConfigured) {
+      const token = getAccessToken();
+      if (!token) {
+        alert('認証セッションが切れています。再ログインしてください。');
+        return;
+      }
+      try {
+        await updateLogInSupabase(logId, user.id, patch, token);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '学習ログの更新に失敗しました。';
+        alert(message);
+        return;
+      }
+    }
+
     const updatedLogs = logs.map(l => l.id === logId ? { ...l, ...patch, id: l.id, userId: user.id } : l);
     setLogs(updatedLogs);
     saveLogs(updatedLogs, user.id);
     setLastEntry(prev => (prev && prev.id === logId) ? { ...prev, ...patch, id: prev.id, userId: user.id } : prev);
   };
 
-  const handleDeleteLog = (logId: string) => {
+  const handleDeleteLog = async (logId: string) => {
     if (!user) return;
+
+    if (isSupabaseConfigured) {
+      const token = getAccessToken();
+      if (!token) {
+        alert('認証セッションが切れています。再ログインしてください。');
+        return;
+      }
+      try {
+        await deleteLogInSupabase(logId, user.id, token);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '学習ログの削除に失敗しました。';
+        alert(message);
+        return;
+      }
+    }
+
     const updatedLogs = logs.filter(l => l.id !== logId);
     setLogs(updatedLogs);
     saveLogs(updatedLogs, user.id);
@@ -100,6 +249,14 @@ const AppContent: React.FC = () => {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-300">
+        認証情報を確認しています...
+      </div>
+    );
+  }
 
   if (!user && location.pathname !== '/login') {
     return <Navigate to="/login" replace />;

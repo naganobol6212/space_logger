@@ -1,6 +1,7 @@
 
 import { LogEntry, User, ThemeType } from './types';
 import { TAGS, getTagById } from './constants/tags';
+import { fetchLogsFromSupabase, getAccessToken, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY = 'space_logger_data';
 const AUTH_KEY = 'space_logger_auth';
@@ -130,7 +131,17 @@ export const syncLogToGitHub = async (user: User): Promise<{ success: boolean; m
     return { success: false, message: 'GitHub credentials are missing.' };
   }
 
-  const logs = getLogs(user.id);
+  let logs = getLogs(user.id);
+  if (isSupabaseConfigured) {
+    const token = getAccessToken();
+    if (token) {
+      try {
+        logs = await fetchLogsFromSupabase(user.id, token);
+      } catch (error) {
+        console.error('Failed to read logs from Supabase. Falling back to local cache.', error);
+      }
+    }
+  }
   if (logs.length === 0) {
     return { success: true, message: 'No logs to sync.' };
   }
