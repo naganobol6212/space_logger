@@ -1,79 +1,87 @@
 <div align="center">
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+
+# SPACE LOGGER
+
+**知の深淵へ、いざ発進。未知なる星域を探索せよ。**
+
+学習記録を宇宙探索になぞらえた、エンジニア向けの学習ログ管理アプリです。
+
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20DB-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+
 </div>
 
-# Space Logger
+---
 
-学習記録アプリ（React + TypeScript + Vite）。
-本番公開は `Vercel + Supabase(Auth + Postgres)` を前提にしています。
+## 機能
 
-## Run Locally
+- **学習ログの記録** — タイトル・時間・タグ・メモ・学習タイプ（input / output / both）を記録
+- **分析ダッシュボード** — 日別・カテゴリ別の学習時間をグラフで可視化
+- **GitHub 連携** — 学習ログを自分の GitHub リポジトリ（`space-logger`）に Markdown として自動同期
+- **認証** — メール＋パスワード登録 / GitHub OAuth の2方式に対応
+- **ダークモード** — ライト／ダーク切り替え対応
 
-**Prerequisites:**  Node.js
+## 技術スタック
 
+| カテゴリ | 採用技術 |
+|---|---|
+| フロントエンド | React 19, TypeScript 5.8, Vite 6 |
+| スタイリング | Tailwind CSS |
+| グラフ | Recharts |
+| 認証・DB | Supabase Auth (PKCE), Supabase Postgres (RLS) |
+| デプロイ | Vercel |
 
-1. Install dependencies:
-   `npm install`
-2. Create `.env.local` from `.env.example`
-3. Set Supabase env vars in `.env.local`
+## ローカル起動
+
+**必要なもの:** Node.js
+
+```bash
+# 1. 依存関係をインストール
+npm install
+
+# 2. 環境変数ファイルを作成
+cp .env.example .env.local
+
+# 3. .env.local に Supabase の値を設定（下記「Supabase セットアップ」参照）
+
+# 4. 開発サーバー起動
+npm run dev
+```
+
+### 環境変数
+
+```env
+VITE_SUPABASE_URL=https://xxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+GEMINI_API_KEY=your-gemini-key   # optional
+```
+
+## Supabase セットアップ
+
+1. [Supabase](https://supabase.com/) でプロジェクトを作成
+2. **SQL Editor** で `supabase/schema.sql` を実行（テーブル・RLS ポリシーが作成されます）
+3. `Authentication > Providers` で以下を有効化
+   - **Email** （メール認証）
+   - **GitHub** （OAuth）
+4. `Authentication > URL Configuration` でリダイレクト URL を設定
+   - ローカル: `http://localhost:5173`
+   - 本番: `https://<your-domain>`
+5. プロジェクト URL と anon key を `.env.local` にコピー
+
+## デプロイ（Vercel）
+
+1. リポジトリを GitHub に push
+2. [Vercel](https://vercel.com/) でプロジェクトをインポート
+3. 環境変数を Vercel Project Settings に設定
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. (Optional) Set `GEMINI_API_KEY`
-3. Run the app:
-   `npm run dev`
+   - `GEMINI_API_KEY`（任意）
+4. デプロイ
+5. Supabase の `URL Configuration` に本番ドメインを追加
 
-## Supabase Setup (Required)
+## ライセンス
 
-1. Create a Supabase project
-2. Run SQL in `supabase/schema.sql` (SQL Editor)
-3. Enable providers in `Authentication > Providers`
-   - Email
-   - GitHub
-4. Configure redirect URLs in `Authentication > URL Configuration`
-   - Local: `http://localhost:3000/login`
-   - Production: `https://<your-domain>/login`
-5. Copy project URL and anon key into env vars
-
-## Deploy (Vercel Recommended)
-
-1. Push repository to GitHub
-2. Import project in Vercel
-3. Set Environment Variables in Vercel Project Settings
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `GEMINI_API_KEY` (optional)
-4. Deploy
-5. Add production callback URL in Supabase:
-   - `https://<your-vercel-domain>/login`
-
-## GitHub Pages (Legacy)
-
-`main` push で GitHub Actions により `dist/` を配信する設定（`.github/workflows/deploy-pages.yml`）も残しています。
-本番運用は Vercel を推奨です。
-
-## 学習ログ改修（確認チェックリスト）
-
-### デフォルトログが入らないこと
-- **新規登録直後**の `履歴` が **0件**である
-- **新規登録直後**の `分析` が「学習していない」状態として表示される（棒グラフが不自然に伸びない）
-
-### 追加 → 即反映
-- `記録` で1件追加すると、`履歴` と `分析` に即反映される
-
-### 編集 → 即反映
-- `履歴` の各ログで **編集** を開き、以下を変更して **保存** できる
-  - title
-  - duration（入力例: `90分` / `1.5時間` / `2時間30分` / `2ポモドーロ`）
-  - learningType（input / output / both）
-  - 日付（timestamp）
-- 保存直後に `履歴` と `分析`（棒グラフ/集計）が即時更新される
-
-### 削除 → 即反映
-- `履歴` の各ログで **削除** を押すと確認ダイアログが出る
-- OK を押すと削除され、`履歴` と `分析` が即時更新される
-
-### ユーザー切替で混在しないこと（userId分離）
-- ユーザーAでログを作成 → ログアウト → ユーザーBでログイン
-  - ユーザーBの `履歴` は **Aのログが混ざらない**
-  - ユーザーBのログが無ければ `履歴` は **0件**（空配列）
-- 再度ユーザーAでログインすると、Aのログのみ表示される
+MIT
