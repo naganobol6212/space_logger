@@ -184,7 +184,7 @@ export const startGitHubOAuth = async () => {
 export const signInWithPassword = async (email: string, password: string): Promise<Session> => {
   const client = ensureSupabaseClient();
   const { data, error } = await client.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(error.message);
+  if (error) throw error;
   if (!data.session) throw new Error('ログインセッションの取得に失敗しました');
   return data.session;
 };
@@ -198,8 +198,14 @@ export const signUpWithPassword = async (email: string, password: string, name: 
       data: { name },
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw error;
   return { session: data.session, user: data.user };
+};
+
+export const resendConfirmationEmail = async (email: string): Promise<void> => {
+  const client = ensureSupabaseClient();
+  const { error } = await client.auth.resend({ type: 'signup', email });
+  if (error) throw error;
 };
 
 export const fetchAuthUser = async (accessToken?: string): Promise<SupabaseAuthUser | null> => {
