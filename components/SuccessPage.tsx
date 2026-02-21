@@ -2,7 +2,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogEntry, User, ThemeType } from '../types';
-import { syncLogToGitHub } from '../store';
+import { syncLogToGitHub, type SyncResult } from '../store';
+import { getTagById } from '../constants/tags';
+import { getGitHubAuthStatus, startGitHubOAuth } from '../supabase';
 
 interface SuccessPageProps {
   entry: LogEntry | null;
@@ -15,18 +17,77 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
   const navigate = useNavigate();
   const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = React.useState('');
+  const [syncCode, setSyncCode] = React.useState<SyncResult['code']>();
+  const syncStartedRef = React.useRef(false);
+  const [githubAuth, setGithubAuth] = React.useState<{
+    isGithubOAuth: boolean;
+    providerToken: string | null;
+    oauthUsername: string | null;
+    ready: boolean;
+  }>({ isGithubOAuth: false, providerToken: null, oauthUsername: null, ready: false });
+  const learningTypeLabel = entry?.learningType === 'input'
+    ? 'インプット'
+    : entry?.learningType === 'output'
+      ? 'アウトプット'
+      : 'インプット＋アウトプット';
+  const tagLabels = (entry?.tags || []).map(tagId => getTagById(tagId).label).join(', ');
+  React.useEffect(() => {
+    let mounted = true;
+    const loadStatus = async () => {
+      const status = await getGitHubAuthStatus();
+      if (!mounted) return;
+      setGithubAuth({
+        isGithubOAuth: status.isGithubOAuth,
+        providerToken: status.providerToken,
+        oauthUsername: status.oauthUsername,
+        ready: true,
+      });
+    };
+    loadStatus();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const effectiveGitHubUsername = user?.githubUsername || githubAuth.oauthUsername || '';
+  const canRetryOAuth = syncCode === 'MISSING_SCOPE' || syncCode === 'OAUTH_EXPIRED';
 
   const handleSync = async () => {
-    if (!user) return;
+    if (!user) {
+      setSyncStatus('error');
+      setSyncCode('AUTH_ERROR');
+      setSyncMessage('ログイン状態を確認できませんでした。再ログインしてください。');
+      return;
+    }
+    if (syncStartedRef.current || syncStatus === 'syncing' || syncStatus === 'success') return;
+    syncStartedRef.current = true;
+    const userForSync: User = {
+      ...user,
+      githubUsername: effectiveGitHubUsername || user.githubUsername,
+      githubRepo: 'space-logger',
+    };
+    console.log('[GitHubSync] start', { userId: user.id, repo: `${userForSync.githubUsername || 'me'}/space-logger` });
     setSyncStatus('syncing');
-    const result = await syncLogToGitHub(user);
+    setSyncCode(undefined);
+
+    // SuccessPage は「同期を試みる」だけを担当し、権限判定は store.ts の result.code に委譲する。
+    const result = await syncLogToGitHub(userForSync, githubAuth.providerToken || undefined, entry);
     if (result.success) {
       setSyncStatus('success');
+      setSyncCode(result.code);
       setSyncMessage('Mission Log Updated! (GitHubに草が生えました)');
+      console.log('[GitHubSync] success');
     } else {
       setSyncStatus('error');
+      setSyncCode(result.code);
       setSyncMessage(result.message || 'Sync failed');
+      syncStartedRef.current = false;
+      console.error('[GitHubSync] failed', result.message);
     }
+  };
+
+  const handleReconnectGitHub = async () => {
+    await startGitHubOAuth();
   };
 
   return (
@@ -64,11 +125,17 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
           </div>
         </div>
 
-        <div className="w-full bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center justify-center gap-3">
-          <span className="material-symbols-outlined text-orange-400 filled animate-pulse">local_fire_department</span>
-          <div className="flex flex-col items-start leading-none">
-            <span className="text-[10px] text-orange-200 uppercase tracking-widest font-bold">Current Streak</span>
-            <span className="text-xl font-bold text-white">{user?.streak || 14} Days</span>
+        <div className="w-full bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-400/30 rounded-xl p-4">
+          <p className="text-[10px] text-blue-200 uppercase tracking-widest font-bold mb-2">今回の記録</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+            <p className="text-white/60">学習タイプ</p>
+            <p className="text-white font-bold text-right">{learningTypeLabel}</p>
+            <p className="text-white/60">タグ</p>
+            <p className="text-white font-bold text-right truncate">{tagLabels || '未設定'}</p>
+            <p className="text-white/60">時間</p>
+            <p className="text-white font-bold text-right">{entry?.duration || '未設定'}</p>
+            <p className="text-white/60">メモ</p>
+            <p className="text-white font-bold text-right truncate">{entry?.memo || 'なし'}</p>
           </div>
         </div>
       </div>
@@ -85,22 +152,39 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
           </div>
         )}
 
-        {user?.githubToken && (
-          <button
-            onClick={handleSync}
-            disabled={syncStatus === 'syncing' || syncStatus === 'success'}
-            className={`w-full ${syncStatus === 'success' ? 'bg-green-600' : 'bg-slate-800'} text-white font-bold text-lg py-4 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2`}
-          >
-            {syncStatus === 'syncing' ? (
-              <span className="material-symbols-outlined animate-spin">refresh</span>
-            ) : syncStatus === 'success' ? (
-              <span className="material-symbols-outlined">check</span>
-            ) : (
-              <span className="material-symbols-outlined">public</span>
-            )}
-            <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'success' ? 'Synced' : 'Sync to Earth'}</span>
-          </button>
+        {canRetryOAuth && (
+          <div className="w-full bg-amber-500/15 border border-amber-400/40 rounded-xl p-3 text-center animate-fade-in-up space-y-2">
+            <p className="text-amber-200 text-sm font-semibold">GitHubに学習ログを保存するための権限がまだありません。</p>
+            <p className="text-amber-100/90 text-xs">Space Logger は space-logger リポジトリ以外にはアクセスしません。</p>
+            <button
+              onClick={handleReconnectGitHub}
+              className="w-full bg-amber-400 text-black font-bold text-sm py-2.5 rounded-lg hover:bg-amber-300 transition-colors"
+            >
+              GitHubを再連携する
+            </button>
+          </div>
         )}
+
+        <button
+          onClick={handleSync}
+          disabled={!githubAuth.ready || syncStatus === 'syncing' || syncStatus === 'success'}
+          className={`w-full ${(syncStatus === 'success' ? 'bg-green-600' : 'bg-slate-800')} text-white font-bold text-lg py-4 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+        >
+          {syncStatus === 'syncing' ? (
+            <span className="material-symbols-outlined animate-spin">refresh</span>
+          ) : syncStatus === 'success' ? (
+            <span className="material-symbols-outlined">check</span>
+          ) : (
+            <span className="material-symbols-outlined">deployed_code</span>
+          )}
+          <span>
+            {syncStatus === 'syncing'
+              ? 'GitHubへ同期中...'
+              : syncStatus === 'success'
+                ? 'GitHub同期完了（草が生えます）'
+                : 'GitHubに同期して草を生やす'}
+          </span>
+        </button>
       </div>
 
       <button

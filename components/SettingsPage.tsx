@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, ThemeType } from '../types';
+import { getGitHubAuthStatus, isSupabaseConfigured, startGitHubOAuth } from '../supabase';
 
 interface SettingsPageProps {
   user: User | null;
@@ -10,28 +11,46 @@ interface SettingsPageProps {
   onUpdateUser: (user: User) => void;
 }
 
-type SettingsView = 'menu' | 'profile' | 'notifications' | 'theme' | 'github';
+type SettingsView = 'menu' | 'profile' | 'theme' | 'github';
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onThemeChange, onUpdateUser }) => {
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const [userName, setUserName] = useState(user?.name || '');
   const [userAvatar, setUserAvatar] = useState(user?.avatar || '');
-  const [notifications, setNotifications] = useState({ email: true, push: false, weekly: true });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const [githubUsername, setGithubUsername] = useState(user?.githubUsername || '');
-  const [githubRepo, setGithubRepo] = useState(user?.githubRepo || '');
-  const [githubToken, setGithubToken] = useState(user?.githubToken || '');
+  const [githubAuth, setGithubAuth] = useState<{ isGithubOAuth: boolean; oauthUsername: string | null; ready: boolean }>({
+    isGithubOAuth: false,
+    oauthUsername: null,
+    ready: false,
+  });
 
   useEffect(() => {
     if (user) {
       setUserName(user.name);
       setUserAvatar(user.avatar);
       setGithubUsername(user.githubUsername || '');
-      setGithubRepo(user.githubRepo || '');
-      setGithubToken(user.githubToken || '');
     }
   }, [user]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadGitHubAuth = async () => {
+      const status = await getGitHubAuthStatus();
+      if (!mounted) return;
+      setGithubAuth({
+        isGithubOAuth: status.isGithubOAuth,
+        oauthUsername: status.oauthUsername,
+        ready: true,
+      });
+      setGithubUsername(prev => prev || status.oauthUsername || '');
+    };
+    loadGitHubAuth();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSaveProfile = () => {
     if (!user) return;
@@ -50,22 +69,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
     }, 800);
   };
 
-  const handleSaveGitHub = () => {
-    if (!user) return;
-    setSaveStatus('saving');
-
-    const updatedUser: User = {
-      ...user,
-      githubUsername,
-      githubRepo,
-      githubToken
-    };
-
-    setTimeout(() => {
-      onUpdateUser(updatedUser);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    }, 800);
+  const handleConnectGitHub = async () => {
+    if (!isSupabaseConfigured) return;
+    await startGitHubOAuth();
   };
 
   const generateRandomAvatar = () => {
@@ -118,30 +124,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
           </div>
         );
 
-      case 'notifications':
-        return (
-          <div className="space-y-2 animate-fade-in-up">
-            {[
-              { id: 'email', label: 'メールレポート', desc: '週次サマリーを受け取る', val: notifications.email },
-              { id: 'push', label: 'プッシュ通知', desc: '学習忘れ防止リマインダー', val: notifications.push },
-              { id: 'weekly', label: 'ウィークリーチャレンジ', desc: '新しい目標の通知', val: notifications.weekly },
-            ].map(item => (
-              <div key={item.id} className="flex items-center justify-between p-5 bg-white/50 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/5">
-                <div>
-                  <p className="font-bold text-sm text-slate-800 dark:text-gray-200">{item.label}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-gray-500">{item.desc}</p>
-                </div>
-                <button
-                  onClick={() => setNotifications({ ...notifications, [item.id as keyof typeof notifications]: !item.val })}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${item.val ? 'bg-primary' : 'bg-slate-300 dark:bg-gray-700'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${item.val ? 'left-7' : 'left-1'}`}></div>
-                </button>
-              </div>
-            ))}
-          </div>
-        );
-
       case 'theme':
         return (
           <div className="grid grid-cols-1 gap-4 animate-fade-in-up">
@@ -179,53 +161,53 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
               <p className="text-xs text-slate-500 dark:text-gray-400">学習ログを自動で同期します</p>
             </div>
 
+            {!githubAuth.isGithubOAuth && (
+              <button
+                onClick={handleConnectGitHub}
+                className="w-full bg-slate-800 dark:bg-white text-white dark:text-black font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-sm">hub</span>
+                GitHubと連携する
+              </button>
+            )}
+
+            {githubAuth.isGithubOAuth && (
+              <div className="w-full bg-green-500/10 border border-green-500/30 rounded-xl p-3">
+                <p className="text-xs font-bold text-green-600 dark:text-green-300">
+                  GitHub連携済み {githubAuth.oauthUsername ? `(@${githubAuth.oauthUsername})` : ''}
+                </p>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">GitHub Username</label>
                 <input
-                  value={githubUsername}
-                  onChange={(e) => setGithubUsername(e.target.value)}
-                  placeholder="例: naganoma"
-                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
+                  value={githubAuth.oauthUsername || githubUsername || ''}
+                  readOnly
+                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 text-slate-500 dark:text-gray-300"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">Repository Name</label>
+                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">Repository</label>
                 <input
-                  value={githubRepo}
-                  onChange={(e) => setGithubRepo(e.target.value)}
-                  placeholder="例: space-log"
-                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
+                  value="space-logger"
+                  disabled
+                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 text-slate-500 dark:text-gray-300"
                 />
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 dark:text-gray-500 uppercase ml-1">Personal Access Token (Repo Scope)</label>
-                <input
-                  value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
-                  type="password"
-                  placeholder="ghp_xxxxxxxxxxxx"
-                  className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl py-4 px-4 mt-1 focus:ring-2 focus:ring-primary outline-none transition-all text-slate-800 dark:text-white"
-                />
-                <p className="text-[10px] text-slate-400 mt-2 px-1">
-                  ※ TokenはlocalStorageにのみ保存され、外部送信されません。
-                </p>
-              </div>
-
-              <button
-                onClick={handleSaveGitHub}
-                disabled={saveStatus !== 'idle'}
-                className={`w-full ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-slate-800 dark:bg-white'} ${saveStatus === 'saved' ? 'text-white' : 'text-white dark:text-black'} font-black py-4 rounded-xl shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2 mt-4`}
-              >
-                {saveStatus === 'saving' ? (
-                  <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                ) : saveStatus === 'saved' ? (
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                ) : (
-                  <span className="material-symbols-outlined text-sm">save</span>
-                )}
-                {saveStatus === 'saving' ? '接続中...' : saveStatus === 'saved' ? '設定完了' : '設定を保存'}
-              </button>
+              <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                GitHub OAuthでログイン済みなら、学習記録後にそのまま同期できます。
+              </p>
+              {githubAuth.isGithubOAuth && (
+                <button
+                  onClick={handleConnectGitHub}
+                  className="w-full bg-slate-800 dark:bg-white text-white dark:text-black font-black py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">refresh</span>
+                  GitHubを再連携する
+                </button>
+              )}
             </div>
           </div>
         );
@@ -235,7 +217,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
           <div className="space-y-4">
             {[
               { id: 'profile', label: 'プロフィール編集', sub: '名前・アバター設定', icon: 'person', color: 'text-blue-500' },
-              { id: 'notifications', label: '通知設定', sub: 'リマインダーと更新', icon: 'notifications', color: 'text-purple-500' },
               { id: 'theme', label: 'テーマ設定', sub: '外観のカスタマイズ', icon: theme === 'dark' ? 'dark_mode' : 'light_mode', color: 'text-amber-500' },
               { id: 'github', label: 'GitHub連携', sub: 'コミットの同期', icon: 'hub', color: 'text-slate-400' },
             ].map(item => (
@@ -285,8 +266,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-500 dark:from-white dark:to-blue-200 drop-shadow-sm">
               {currentView === 'menu' ? '設定' :
                 currentView === 'profile' ? 'プロフィール' :
-                  currentView === 'notifications' ? '通知' :
-                    currentView === 'theme' ? 'テーマ' : 'GitHub'}
+                  currentView === 'theme' ? 'テーマ' : 'GitHub'}
             </h1>
             <p className="text-[10px] text-blue-500 dark:text-blue-300 font-bold mt-1 tracking-widest uppercase">CONFIGURATION</p>
           </div>
