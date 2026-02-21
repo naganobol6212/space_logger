@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LogEntry, ThemeType, LearningType } from '../types';
 import { TAGS, getTagById } from '../constants/tags';
 import { addCustomTag, getCustomTags, removeCustomTag } from '../store';
@@ -10,6 +11,7 @@ interface RecordPageProps {
 }
 
 const RecordPage: React.FC<RecordPageProps> = ({ onRecord, theme }) => {
+  const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [learningType, setLearningType] = useState<LearningType>('both');
   const [duration, setDuration] = useState('1時間');
@@ -136,8 +138,8 @@ const RecordPage: React.FC<RecordPageProps> = ({ onRecord, theme }) => {
           </h1>
           <p className="text-xs text-blue-500 dark:text-blue-300 font-bold mt-1 tracking-wider uppercase">NEW MISSION ENTRY</p>
         </div>
-        <button className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 dark:bg-white/10 backdrop-blur text-slate-500 dark:text-white/70 hover:bg-slate-300 dark:hover:bg-white/20 transition-colors">
-          <span className="material-symbols-outlined text-sm">close</span>
+        <button onClick={() => navigate('/help')} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-200 dark:bg-white/10 backdrop-blur text-slate-500 dark:text-white/70 hover:bg-slate-300 dark:hover:bg-white/20 transition-colors">
+          <span className="material-symbols-outlined text-sm">help</span>
         </button>
       </header>
 
