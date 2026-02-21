@@ -26,6 +26,7 @@ import SettingsPage from './components/SettingsPage';
 import SuccessPage from './components/SuccessPage';
 import LoginPage from './components/LoginPage';
 import Navigation from './components/Navigation';
+import HelpPage from './components/HelpPage';
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(isSupabaseConfigured ? null : getUser());
@@ -349,6 +350,7 @@ const AppContent: React.FC = () => {
             <Route path="/analysis" element={<AnalysisPage logs={logs} user={user} theme={theme} />} />
             <Route path="/settings" element={<SettingsPage user={user} onLogout={handleLogout} theme={theme} onThemeChange={(t) => setTheme(t)} onUpdateUser={handleUpdateUser} />} />
             <Route path="/success" element={<SuccessPage entry={lastEntry} user={user} theme={theme} />} />
+            <Route path="/help" element={<HelpPage theme={theme} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

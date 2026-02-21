@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, ThemeType } from '../types';
 import { getGitHubAuthStatus, isSupabaseConfigured, startGitHubOAuth } from '../supabase';
 
@@ -14,6 +15,7 @@ interface SettingsPageProps {
 type SettingsView = 'menu' | 'profile' | 'theme' | 'github';
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onThemeChange, onUpdateUser }) => {
+  const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<SettingsView>('menu');
   const [userName, setUserName] = useState(user?.name || '');
   const [userAvatar, setUserAvatar] = useState(user?.avatar || '');
@@ -219,10 +221,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
               { id: 'profile', label: 'プロフィール編集', sub: '名前・アバター設定', icon: 'person', color: 'text-blue-500' },
               { id: 'theme', label: 'テーマ設定', sub: '外観のカスタマイズ', icon: theme === 'dark' ? 'dark_mode' : 'light_mode', color: 'text-amber-500' },
               { id: 'github', label: 'GitHub連携', sub: 'コミットの同期', icon: 'hub', color: 'text-slate-400' },
+              { id: 'help', label: '使い方', sub: 'アプリの操作ガイド', icon: 'help', color: 'text-green-500' },
             ].map(item => (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id as SettingsView)}
+                onClick={() => item.id === 'help' ? navigate('/help') : setCurrentView(item.id as SettingsView)}
                 className="w-full flex items-center justify-between p-5 bg-white/70 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors group"
               >
                 <div className="flex items-center gap-4">
