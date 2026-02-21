@@ -132,6 +132,12 @@ const README_CONTENT = `# Space Logger
 学習の継続を可視化するためのログです。
 `;
 
+export type SyncResult = {
+  success: boolean;
+  message: string;
+  code?: 'MISSING_SCOPE' | 'REPO_NOT_FOUND' | 'OAUTH_EXPIRED' | 'ALREADY_SYNCED' | 'AUTH_ERROR';
+};
+
 const githubHeaders = (token: string) => ({
   Authorization: `Bearer ${token}`,
   Accept: 'application/vnd.github+json',
@@ -181,24 +187,43 @@ const buildLogRow = (entry: LogEntry) => {
   return `| ${escapeMarkdownCell(dateLabel)} | ${escapeMarkdownCell(entry.title)} | ${escapeMarkdownCell(getLearningTypeLabel(entry.learningType))} | ${escapeMarkdownCell(durationLabel)} | ${escapeMarkdownCell(tagLabels || 'なし')} | ${escapeMarkdownCell(entry.memo || '')} |\n`;
 };
 
-const getGitHubLogin = async (token: string): Promise<string> => {
+const getGitHubLogin = async (token: string): Promise<SyncResult & { login?: string }> => {
   const response = await fetch(`${GITHUB_API}/user`, { headers: githubHeaders(token) });
+  if (response.status === 401) {
+    return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
+  }
   if (!response.ok) {
-    throw new Error(`Failed to fetch GitHub user: ${response.status} ${await response.text()}`);
+    return { success: false, code: 'AUTH_ERROR', message: `GitHubユーザー取得に失敗しました (${response.status})` };
   }
   const data = await response.json() as { login?: string };
-  if (!data.login) throw new Error('GitHub login is missing.');
-  return data.login;
+  if (!data.login) return { success: false, code: 'AUTH_ERROR', message: 'GitHubユーザー名を取得できませんでした。' };
+  return { success: true, message: '', login: data.login };
 };
 
-const ensureSpaceLoggerRepo = async (owner: string, token: string): Promise<{ created: boolean }> => {
+const ensureSpaceLoggerRepo = async (owner: string, token: string): Promise<SyncResult> => {
   const repoUrl = `${GITHUB_API}/repos/${owner}/${SPACE_LOGGER_REPO}`;
   const repoCheck = await fetch(repoUrl, { headers: githubHeaders(token) });
-  if (repoCheck.ok) return { created: false };
+
+  // Responsibility:
+  // - OAuth scope不足とtoken失効は別のUX導線を出すため、ここでコードを厳密に分離する。
+  // - repo未作成(404)はエラーではなく、作成フローに進むための正常な分岐として扱う。
+  //
+  // GET /repos/{owner}/space-logger
+  // 200: repo exists
+  // 404: repo missing (normal branch)
+  // 401/403: auth issue
+  if (repoCheck.ok) return { success: true, message: '' };
+  if (repoCheck.status === 401 || repoCheck.status === 403) {
+    return { success: false, code: 'AUTH_ERROR', message: 'GitHubリポジトリの参照権限が不足しています。' };
+  }
   if (repoCheck.status !== 404) {
-    throw new Error(`Failed to check repo: ${repoCheck.status} ${await repoCheck.text()}`);
+    return { success: false, code: 'AUTH_ERROR', message: `GitHubリポジトリ確認に失敗しました (${repoCheck.status})` };
   }
 
+  // POST /user/repos
+  // 201: created
+  // 401: expired token
+  // 403/404: missing scope (repo/public_repo)
   const createRepo = await fetch(`${GITHUB_API}/user/repos`, {
     method: 'POST',
     headers: githubHeaders(token),
@@ -208,12 +233,14 @@ const ensureSpaceLoggerRepo = async (owner: string, token: string): Promise<{ cr
       auto_init: true,
     }),
   });
+  if (createRepo.status === 401) {
+    return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
+  }
+  if (createRepo.status === 403 || createRepo.status === 404) {
+    return { success: false, code: 'MISSING_SCOPE', message: 'GitHubに学習ログを保存するための権限がまだありません。' };
+  }
   if (!createRepo.ok) {
-    const body = await createRepo.text();
-    if (createRepo.status === 401 || createRepo.status === 403 || createRepo.status === 404) {
-      throw new Error('GitHubリポジトリ作成権限が不足しています。SupabaseのGitHub Provider scopesに `repo` を追加してください。');
-    }
-    throw new Error(`Failed to create repo: ${createRepo.status} ${body}`);
+    return { success: false, code: 'AUTH_ERROR', message: `GitHubリポジトリ作成に失敗しました (${createRepo.status})` };
   }
 
   const readmeUrl = `${repoUrl}/contents/${README_PATH}`;
@@ -222,8 +249,12 @@ const ensureSpaceLoggerRepo = async (owner: string, token: string): Promise<{ cr
   if (readmeCheck.ok) {
     const data = await readmeCheck.json() as { sha?: string };
     sha = data.sha;
+  } else if (readmeCheck.status === 401) {
+    return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
+  } else if (readmeCheck.status === 403) {
+    return { success: false, code: 'MISSING_SCOPE', message: 'GitHubに学習ログを保存するための権限がまだありません。' };
   } else if (readmeCheck.status !== 404) {
-    throw new Error(`Failed to check README: ${readmeCheck.status} ${await readmeCheck.text()}`);
+    return { success: false, code: 'AUTH_ERROR', message: `README確認に失敗しました (${readmeCheck.status})` };
   }
 
   const readmeUpsert = await fetch(readmeUrl, {
@@ -235,23 +266,34 @@ const ensureSpaceLoggerRepo = async (owner: string, token: string): Promise<{ cr
       sha,
     }),
   });
-  if (!readmeUpsert.ok) {
-    throw new Error(`Failed to write README: ${readmeUpsert.status} ${await readmeUpsert.text()}`);
+  if (readmeUpsert.status === 401) {
+    return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
   }
-  return { created: true };
+  if (readmeUpsert.status === 403) {
+    return { success: false, code: 'MISSING_SCOPE', message: 'GitHubに学習ログを保存するための権限がまだありません。' };
+  }
+  if (!readmeUpsert.ok) {
+    return { success: false, code: 'AUTH_ERROR', message: `README更新に失敗しました (${readmeUpsert.status})` };
+  }
+
+  return { success: true, message: '' };
 };
 
 export const syncLogToGitHub = async (
   user: User,
   authToken: string | undefined,
   entry: LogEntry | null
-): Promise<{ success: boolean; message?: string }> => {
-  if (!authToken) return { success: false, message: 'GitHub OAuth token is missing.' };
-  if (!entry) return { success: false, message: 'No log entry to sync.' };
+): Promise<SyncResult> => {
+  if (!authToken) return { success: false, code: 'AUTH_ERROR', message: 'GitHub OAuthトークンが見つかりません。' };
+  if (!entry) return { success: false, code: 'AUTH_ERROR', message: '同期対象の学習記録がありません。' };
 
   try {
-    const owner = await getGitHubLogin(authToken);
-    await ensureSpaceLoggerRepo(owner, authToken);
+    const loginResult = await getGitHubLogin(authToken);
+    if (!loginResult.success || !loginResult.login) return loginResult;
+
+    const owner = loginResult.login;
+    const repoResult = await ensureSpaceLoggerRepo(owner, authToken);
+    if (!repoResult.success) return repoResult;
 
     const path = buildMonthlyPathFromTimestamp(entry.timestamp);
     const row = buildLogRow(entry);
@@ -271,8 +313,12 @@ export const syncLogToGitHub = async (
         const suffix = decoded.endsWith('\n') ? '' : '\n';
         nextContent = `${decoded}${suffix}${row}`;
       }
+    } else if (currentFile.status === 401) {
+      return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
+    } else if (currentFile.status === 403) {
+      return { success: false, code: 'MISSING_SCOPE', message: 'GitHubに学習ログを保存するための権限がまだありません。' };
     } else if (currentFile.status !== 404) {
-      return { success: false, message: `Failed to fetch mission log: ${currentFile.status} ${await currentFile.text()}` };
+      return { success: false, code: 'AUTH_ERROR', message: `Mission Log取得に失敗しました (${currentFile.status})` };
     }
 
     const putResponse = await fetch(fileUrl, {
@@ -285,15 +331,21 @@ export const syncLogToGitHub = async (
       }),
     });
 
-    if (putResponse.ok) return { success: true };
+    if (putResponse.ok) return { success: true, message: 'GitHubに同期しました。' };
 
-    const errorText = await putResponse.text();
-    // same entry re-run guard: file already exists => no second commit
+    // PUT /contents/{path}
+    // 422/409: duplicated request -> idempotent success
     if (putResponse.status === 422 || putResponse.status === 409) {
-      return { success: true, message: 'Already synced for this record.' };
+      return { success: true, code: 'ALREADY_SYNCED', message: 'この記録はすでに同期済みです。' };
     }
-    return { success: false, message: `Failed to sync: ${putResponse.status} ${errorText}` };
+    if (putResponse.status === 401) {
+      return { success: false, code: 'OAUTH_EXPIRED', message: 'GitHub連携の有効期限が切れています。再連携してください。' };
+    }
+    if (putResponse.status === 403) {
+      return { success: false, code: 'MISSING_SCOPE', message: 'GitHubに学習ログを保存するための権限がまだありません。' };
+    }
+    return { success: false, code: 'AUTH_ERROR', message: `GitHub同期に失敗しました (${putResponse.status})` };
   } catch (error) {
-    return { success: false, message: `Network error: ${error}` };
+    return { success: false, code: 'AUTH_ERROR', message: `ネットワークエラー: ${error}` };
   }
 };

@@ -199,6 +199,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user, onLogout, theme, onTh
               <p className="text-[11px] text-slate-500 dark:text-gray-400">
                 GitHub OAuthでログイン済みなら、学習記録後にそのまま同期できます。
               </p>
+              {githubAuth.isGithubOAuth && (
+                <button
+                  onClick={handleConnectGitHub}
+                  className="w-full bg-slate-800 dark:bg-white text-white dark:text-black font-black py-3 rounded-xl shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">refresh</span>
+                  GitHubを再連携する
+                </button>
+              )}
             </div>
           </div>
         );

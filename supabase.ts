@@ -175,6 +175,7 @@ export const startGitHubOAuth = async () => {
     provider: 'github',
     options: {
       redirectTo: window.location.origin,
+      scopes: 'public_repo',
     },
   });
   if (error) throw new Error(error.message);
