@@ -66,7 +66,6 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
       githubUsername: effectiveGitHubUsername || user.githubUsername,
       githubRepo: 'space-logger',
     };
-    console.log('[GitHubSync] start', { userId: user.id, repo: `${userForSync.githubUsername || 'me'}/space-logger` });
     setSyncStatus('syncing');
     setSyncCode(undefined);
 
@@ -76,13 +75,11 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
       setSyncStatus('success');
       setSyncCode(result.code);
       setSyncMessage('Mission Log Updated! (GitHubに草が生えました)');
-      console.log('[GitHubSync] success');
     } else {
       setSyncStatus('error');
       setSyncCode(result.code);
       setSyncMessage(result.message || 'Sync failed');
       syncStartedRef.current = false;
-      console.error('[GitHubSync] failed', result.message);
     }
   };
 
