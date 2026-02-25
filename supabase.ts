@@ -10,7 +10,6 @@ interface ProfileRow {
   streak: number | null;
   github_username: string | null;
   github_repo: string | null;
-  github_token: string | null;
 }
 
 interface LogRow {
@@ -48,11 +47,11 @@ const ensureSupabaseClient = () => {
   return supabase;
 };
 
-const authHeaders = (accessToken?: string) => {
+const authHeaders = (accessToken: string) => {
   const { SUPABASE_ANON_KEY } = ensureConfig();
   return {
     apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
+    Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
   };
 };
@@ -75,7 +74,6 @@ const mapProfileToUser = (profile: ProfileRow | null, authUser: SupabaseAuthUser
     streak: profile?.streak ?? 0,
     githubUsername: profile?.github_username || metadataGitHubUsername || undefined,
     githubRepo: profile?.github_repo || undefined,
-    githubToken: profile?.github_token || undefined,
   };
 };
 
@@ -224,9 +222,11 @@ export const getAccessToken = async (): Promise<string | null> => {
 
 export const getProfile = async (userId: string, accessToken: string): Promise<ProfileRow | null> => {
   const { SUPABASE_URL } = ensureConfig();
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`, {
-    headers: authHeaders(accessToken),
-  });
+  const select = 'id,name,email,avatar,streak,github_username,github_repo';
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=${encodeURIComponent(select)}`,
+    { headers: authHeaders(accessToken) }
+  );
   if (!res.ok) throw new Error('プロフィールの取得に失敗しました');
   const rows = await res.json() as ProfileRow[];
   return rows[0] || null;
@@ -242,7 +242,6 @@ export const upsertProfile = async (user: User, accessToken: string): Promise<Pr
     streak: user.streak ?? 0,
     github_username: user.githubUsername || null,
     github_repo: user.githubRepo || null,
-    github_token: user.githubToken || null,
   }];
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=id`, {
@@ -255,8 +254,8 @@ export const upsertProfile = async (user: User, accessToken: string): Promise<Pr
   });
 
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`プロフィール保存に失敗しました: ${errorText}`);
+    console.error('プロフィール保存に失敗', await res.text());
+    throw new Error('プロフィール保存に失敗しました');
   }
   const rows = await res.json() as ProfileRow[];
   return rows[0];
@@ -295,8 +294,9 @@ export const getOrCreateUserFromSession = async (session: Session): Promise<User
 
 export const fetchLogsFromSupabase = async (userId: string, accessToken: string): Promise<LogEntry[]> => {
   const { SUPABASE_URL } = ensureConfig();
+  const logSelect = 'id,user_id,title,duration,duration_minutes,learning_type,tags,memo,timestamp,category';
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/logs?user_id=eq.${encodeURIComponent(userId)}&select=*&order=timestamp.desc`,
+    `${SUPABASE_URL}/rest/v1/logs?user_id=eq.${encodeURIComponent(userId)}&select=${encodeURIComponent(logSelect)}&order=timestamp.desc`,
     { headers: authHeaders(accessToken) }
   );
   if (!res.ok) throw new Error('ログの取得に失敗しました');
@@ -316,8 +316,8 @@ export const createLogInSupabase = async (entry: LogEntry, userId: string, acces
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`ログ作成に失敗しました: ${errorText}`);
+    console.error('ログ作成に失敗', await res.text());
+    throw new Error('ログ作成に失敗しました');
   }
 };
 
@@ -342,8 +342,8 @@ export const updateLogInSupabase = async (logId: string, userId: string, patch: 
     }
   );
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`ログ更新に失敗しました: ${errorText}`);
+    console.error('ログ更新に失敗', await res.text());
+    throw new Error('ログ更新に失敗しました');
   }
 };
 
@@ -357,7 +357,7 @@ export const deleteLogInSupabase = async (logId: string, userId: string, accessT
     }
   );
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`ログ削除に失敗しました: ${errorText}`);
+    console.error('ログ削除に失敗', await res.text());
+    throw new Error('ログ削除に失敗しました');
   }
 };

@@ -1,5 +1,9 @@
 -- Space Logger schema for Supabase
 -- Run this in Supabase SQL Editor
+--
+-- Migration: If upgrading from a previous version, run the following to remove
+-- the deprecated github_token column from existing databases:
+--   ALTER TABLE public.profiles DROP COLUMN IF EXISTS github_token;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -9,7 +13,6 @@ create table if not exists public.profiles (
   streak integer not null default 0,
   github_username text,
   github_repo text,
-  github_token text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

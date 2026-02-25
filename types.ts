@@ -27,5 +27,4 @@ export interface User {
   theme?: ThemeType;
   githubUsername?: string;
   githubRepo?: string;
-  githubToken?: string;
 }
