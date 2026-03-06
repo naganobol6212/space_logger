@@ -99,34 +99,34 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
     <div className="relative h-[100dvh] w-full flex flex-col items-center justify-between p-6">
       <div className="flex-1"></div>
 
-      <div className="w-full bg-glass-gradient backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex flex-col items-center shadow-2xl animate-float ring-1 ring-white/5 relative overflow-hidden group">
+      <div className="w-full bg-glass-gradient backdrop-blur-xl border border-white/10 rounded-3xl p-5 flex flex-col items-center shadow-2xl animate-float ring-1 ring-white/5 relative overflow-hidden group">
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl"></div>
 
-        <div className="mb-6 relative">
+        <div className="mb-3 relative">
           <div className="absolute inset-0 bg-blue-400/30 blur-xl rounded-full scale-150"></div>
-          <span className="material-symbols-outlined text-6xl text-white relative z-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] filled">
+          <span className="material-symbols-outlined text-5xl text-white relative z-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] filled">
             rocket_launch
           </span>
         </div>
 
-        <h1 className="text-3xl font-bold tracking-[0.2em] text-center text-white mb-2 drop-shadow-md">
-          MISSION<br />COMPLETE
+        <h1 className="text-2xl font-bold tracking-[0.15em] text-center text-white mb-1 drop-shadow-md">
+          MISSION COMPLETE
         </h1>
-        <p className="text-white/80 text-sm text-center mb-8 font-light tracking-wide">
+        <p className="text-white/80 text-xs text-center mb-4 font-light tracking-wide">
           学習を記録しました！
         </p>
 
-        <div className="w-full grid grid-cols-2 gap-4 mb-6">
-          <div className="flex flex-col gap-1 p-4 rounded-2xl bg-black/20 border border-white/5">
+        <div className="w-full grid grid-cols-2 gap-3 mb-3">
+          <div className="flex flex-col gap-1 p-3 rounded-2xl bg-black/20 border border-white/5">
             <span className="text-xs text-white/50 uppercase tracking-wider font-semibold">Subject</span>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#61DAFB] shadow-[0_0_8px_#61DAFB]"></span>
-              <span className="text-lg font-bold truncate">{entry?.title.split(' ')[0] || 'Learning'}</span>
+              <span className="text-base font-bold truncate">{entry?.title.split(' ')[0] || 'Learning'}</span>
             </div>
           </div>
-          <div className="flex flex-col gap-1 p-4 rounded-2xl bg-black/20 border border-white/5">
+          <div className="flex flex-col gap-1 p-3 rounded-2xl bg-black/20 border border-white/5">
             <span className="text-xs text-white/50 uppercase tracking-wider font-semibold">Time</span>
-            <span className="text-lg font-bold">{entry?.duration || '1h'}</span>
+            <span className="text-base font-bold">{entry?.duration || '1h'}</span>
           </div>
         </div>
 
@@ -173,7 +173,7 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
         <button
           onClick={handleSync}
           disabled={!githubAuth.ready || syncStatus === 'syncing' || syncStatus === 'success'}
-          className={`w-full ${(syncStatus === 'success' ? 'bg-green-600' : 'bg-slate-800')} text-white font-bold text-lg py-4 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
+          className={`w-full ${(syncStatus === 'success' ? 'bg-green-600' : 'bg-slate-800')} text-white font-bold text-lg py-5 rounded-xl border border-white/10 hover:bg-slate-700 active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
         >
           {syncStatus === 'syncing' ? (
             <span className="material-symbols-outlined animate-spin">refresh</span>
