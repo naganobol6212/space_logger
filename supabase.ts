@@ -10,6 +10,7 @@ interface ProfileRow {
   streak: number | null;
   github_username: string | null;
   github_repo: string | null;
+  github_access_token: string | null;
 }
 
 interface LogRow {
@@ -111,6 +112,29 @@ export const getCurrentSession = async (): Promise<Session | null> => {
   return data.session;
 };
 
+const getStoredGitHubToken = async (userId: string, accessToken: string): Promise<string | null> => {
+  const { SUPABASE_URL } = ensureConfig();
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=github_access_token`,
+    { headers: authHeaders(accessToken) }
+  );
+  if (!res.ok) return null;
+  const rows = await res.json() as { github_access_token: string | null }[];
+  return rows[0]?.github_access_token || null;
+};
+
+const saveGitHubTokenToProfile = async (userId: string, token: string, accessToken: string): Promise<void> => {
+  const { SUPABASE_URL } = ensureConfig();
+  await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(accessToken),
+      body: JSON.stringify({ github_access_token: token }),
+    }
+  );
+};
+
 export const getGitHubAuthStatus = async (): Promise<GitHubAuthStatus> => {
   if (!isSupabaseConfigured) {
     return { isGithubOAuth: false, providerToken: null, oauthUsername: null };
@@ -140,9 +164,14 @@ export const getGitHubAuthStatus = async (): Promise<GitHubAuthStatus> => {
           ? identityData.login
           : null);
 
-  const providerToken = typeof (session as Session & { provider_token?: string }).provider_token === 'string'
+  let providerToken = typeof (session as Session & { provider_token?: string }).provider_token === 'string'
     ? (session as Session & { provider_token?: string }).provider_token!
     : null;
+
+  // セッションにトークンがない場合はDBから取得
+  if (!providerToken && session?.access_token) {
+    providerToken = await getStoredGitHubToken(authUser.id, session.access_token);
+  }
 
   return {
     isGithubOAuth,
@@ -264,6 +293,12 @@ export const upsertProfile = async (user: User, accessToken: string): Promise<Pr
 export const getOrCreateUserFromSession = async (session: Session): Promise<User | null> => {
   const authUser = session.user || await fetchAuthUser(session.access_token);
   if (!authUser) return null;
+
+  // GitHub OAuthトークンがセッションにある場合はDBに保存
+  const providerToken = (session as Session & { provider_token?: string }).provider_token;
+  if (providerToken) {
+    saveGitHubTokenToProfile(authUser.id, providerToken, session.access_token).catch(console.error);
+  }
 
   try {
     const existingProfile = await getProfile(authUser.id, session.access_token);
