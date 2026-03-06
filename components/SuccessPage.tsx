@@ -18,6 +18,7 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
   const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = React.useState('');
   const [syncCode, setSyncCode] = React.useState<SyncResult['code']>();
+  const [showSyncMessage, setShowSyncMessage] = React.useState(false);
   const syncStartedRef = React.useRef(false);
   const [githubAuth, setGithubAuth] = React.useState<{
     isGithubOAuth: boolean;
@@ -48,6 +49,13 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
       mounted = false;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (syncStatus !== 'success' && syncStatus !== 'error') return;
+    setShowSyncMessage(true);
+    const timer = setTimeout(() => setShowSyncMessage(false), 5000);
+    return () => clearTimeout(timer);
+  }, [syncStatus]);
 
   const effectiveGitHubUsername = user?.githubUsername || githubAuth.oauthUsername || '';
   const canRetryOAuth = syncCode === 'MISSING_SCOPE' || syncCode === 'OAUTH_EXPIRED';
@@ -135,20 +143,20 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
             <p className="text-white font-bold text-right truncate">{entry?.memo || 'なし'}</p>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 min-h-[40px] flex flex-col items-center justify-center w-full gap-4">
-        {syncStatus === 'success' && (
-          <div className="w-full bg-green-500/20 border border-green-500/50 rounded-xl p-3 text-center animate-fade-in-up">
+        {syncStatus === 'success' && showSyncMessage && (
+          <div className="w-full mt-4 bg-green-500/20 border border-green-500/50 rounded-xl p-3 text-center animate-fade-in-up">
             <p className="text-green-300 font-bold text-sm">{syncMessage}</p>
           </div>
         )}
-        {syncStatus === 'error' && (
-          <div className="w-full bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center animate-fade-in-up">
+        {syncStatus === 'error' && showSyncMessage && (
+          <div className="w-full mt-4 bg-red-500/20 border border-red-500/50 rounded-xl p-3 text-center animate-fade-in-up">
             <p className="text-red-300 font-bold text-sm">{syncMessage}</p>
           </div>
         )}
+      </div>
 
+      <div className="flex-1 min-h-[40px] flex flex-col items-center justify-center w-full gap-4">
         {canRetryOAuth && (
           <div className="w-full bg-amber-500/15 border border-amber-400/40 rounded-xl p-3 text-center animate-fade-in-up space-y-2">
             <p className="text-amber-200 text-sm font-semibold">GitHubに学習ログを保存するための権限がまだありません。</p>
