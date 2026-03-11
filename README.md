@@ -1,5 +1,4 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 
 # SPACE LOGGER
 
@@ -12,17 +11,78 @@
 [![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20DB-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
+🚀 **[アプリURL](https://space-logger.vercel.app/)**
+
 </div>
 
 ---
 
+## 開発背景
+
+プログラミング学習を継続する中で、日々の学習内容や積み上げを可視化できる仕組みがあれば、振り返りとモチベーション維持の両方に役立つと考え、開発しました。
+
+フロントエンド学習のアウトプットとして React・TypeScript を用いて開発。GitHub OAuth によるログイン機能を実装し、学習ログを記録した際に GitHub API を利用して専用リポジトリへ自動コミットする仕組みを取り入れました。これにより、学習記録と同時に Contribution Graph（草）にも反映され、継続の積み上げを視覚的に確認できます。
+
+また、宇宙をモチーフにした世界観を取り入れることで、記録行為そのものが継続しやすくなるよう、楽しさを感じられる UI を意識しました。
+
+## 使い方
+
+1. **ログイン** — メールアドレスまたは GitHub アカウントでサインイン
+
+   [![Image from Gyazo](https://i.gyazo.com/202edbef53dccddc51cc0622d67d4279.png)](https://gyazo.com/202edbef53dccddc51cc0622d67d4279)
+
+2. **記録する** — 学習タイトル・時間・タグ・学習タイプ（インプット / アウトプット / 両方）・メモを入力して保存
+
+   [![Image from Gyazo](https://i.gyazo.com/3d6c291c36d94ce96a9ccf17f1799b84.png)](https://gyazo.com/3d6c291c36d94ce96a9ccf17f1799b84)
+
+3. **草が生える** — 記録と同時に GitHub の専用リポジトリへ自動コミット。Contribution Graph に反映される
+
+4. **振り返る** — 履歴ページで過去のログを日付グループ別に確認。検索・編集・削除も可能
+
+   [![Image from Gyazo](https://i.gyazo.com/2686275f9ecca1edb8cf57b1fa5d614e.png)](https://gyazo.com/2686275f9ecca1edb8cf57b1fa5d614e)
+
+5. **分析する** — 分析ページで週別学習時間・タグ別内訳・インプット/アウトプット比率をグラフで確認
+
+   [![Image from Gyazo](https://i.gyazo.com/89dec51d04e1e9ab04002b77896d13b3.png)](https://gyazo.com/89dec51d04e1e9ab04002b77896d13b3)
+
 ## 機能
 
-- **学習ログの記録** — タイトル・時間・タグ・メモ・学習タイプ（input / output / both）を記録
-- **分析ダッシュボード** — 日別・カテゴリ別の学習時間をグラフで可視化
-- **GitHub 連携** — 学習ログを自分の GitHub リポジトリ（`space-logger`）に Markdown として自動同期
-- **認証** — メール＋パスワード登録 / GitHub OAuth の2方式に対応
-- **ダークモード** — ライト／ダーク切り替え対応
+### 実装済み
+
+| 機能 | 概要 |
+|---|---|
+| 学習ログ記録 | タイトル・時間・タグ・メモ・学習タイプ（input / output / both）を記録 |
+| 履歴管理 | 日付グループ別表示・検索・編集・削除。今週の合計時間をヘッダーに表示 |
+| 分析 | 週別学習時間・タグ別内訳・input/output 比率を CSS グラフで可視化 |
+| GitHub 連携 | 記録と同時に GitHub リポジトリへ Markdown として自動コミット |
+| 認証 | メール＋パスワード / GitHub OAuth の2方式 |
+| ダークモード | ライト／ダーク切り替え対応 |
+
+### 今後実装予定
+
+| 機能 | 概要 |
+|---|---|
+| ホーム画面 | 自分の GitHub Contribution Graph を埋め込んだトップ画面を追加 |
+| コミュニティ機能 | 学習ログの公開／非公開設定・一覧表示・リアクション・コメントに対応 |
+| ランキング | 学習時間ランキングを実装。草ランキングはキャッシュ設計後に追加予定 |
+
+## 工夫した点
+
+### GitHub Token の Edge Function 移行
+
+当初、GitHub API へのアクセスはブラウザから直接行っていましたが、トークンがブラウザのネットワークタブに露出するリスクがあるため、**Supabase Edge Function（サーバーサイド）にトークンを移管**しました。ブラウザはトークンを持たず、Edge Function 経由でのみ GitHub API を呼び出す構成にすることで、セキュリティを改善しています。
+
+```
+ブラウザ → Supabase Edge Function（トークン保持）→ GitHub API
+```
+
+### PKCE による OAuth の保護
+
+GitHub OAuth 認証に PKCE（Proof Key for Code Exchange）フローを採用しています。ログイン開始時に生成した乱数（`code_verifier`）をハッシュ化した値を認可サーバーに渡すことで、認可コードを第三者に傍受されても悪用できない仕組みになっています。
+
+### RLS によるデータアクセス制御
+
+Supabase の Row Level Security（RLS）を用いて、DB レベルで「自分のデータにしかアクセスできない」ポリシーを設定しています。フロントエンドのコードに依存せず DB 層でアクセスを制御するため、実装ミスによる情報漏洩を防ぎます。
 
 ## 技術スタック
 
@@ -30,75 +90,9 @@
 |---|---|
 | フロントエンド | React 19, TypeScript 5.8, Vite 6 |
 | スタイリング | Tailwind CSS |
-| グラフ | Recharts |
 | 認証・DB | Supabase Auth (PKCE), Supabase Postgres (RLS) |
+| サーバーレス | Supabase Edge Functions (Deno) |
 | デプロイ | Vercel |
-
-## ローカル起動
-
-**必要なもの:** Node.js
-
-```bash
-# 1. 依存関係をインストール
-npm install
-
-# 2. 環境変数ファイルを作成
-cp .env.example .env.local
-
-# 3. .env.local に Supabase の値を設定（下記「Supabase セットアップ」参照）
-
-# 4. 開発サーバー起動
-npm run dev
-```
-
-### 環境変数
-
-```env
-VITE_SUPABASE_URL=https://xxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-GEMINI_API_KEY=your-gemini-key   # optional
-```
-
-## Supabase セットアップ
-
-1. [Supabase](https://supabase.com/) でプロジェクトを作成
-2. **SQL Editor** で `supabase/schema.sql` を実行（テーブル・RLS ポリシーが作成されます）
-3. `Authentication > Providers` で以下を有効化
-   - **Email** （メール認証）
-   - **GitHub** （OAuth）
-4. `Authentication > URL Configuration` でリダイレクト URL を設定
-   - ローカル: `http://localhost:5173`
-   - 本番: `https://<your-domain>`
-5. プロジェクト URL と anon key を `.env.local` にコピー
-
-## デプロイ（Vercel）
-
-1. リポジトリを GitHub に push
-2. [Vercel](https://vercel.com/) でプロジェクトをインポート
-3. 環境変数を Vercel Project Settings に設定
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `GEMINI_API_KEY`（任意）
-4. デプロイ
-5. Supabase の `URL Configuration` に本番ドメインを追加
-
-## コンセプト
-
-### ◼️ 学習しながら草を生やそう
-GitHub の草（コントリビューション）は就活でも注目されることがあります。
-「草を生やすために学習する」のではなく、**学習継続の意欲を高める仕組み**として GitHub 連携を取り入れました。
-学習を記録するついでに、自然と草が生える体験を目指しています。
-
-### ◼️ インプット・アウトプットのバランスを意識する
-学習記録の際にインプット／アウトプットを選択できます。
-1週間の履歴を振り返ったとき、「インプットばかりだったな」「アウトプットが少ない」と気づくきっかけになれば、という想いを込めています。
-アウトプットはインプットの定着率を大きく左右するので、早いうちから意識できると最高です。
-
-### ◼️ 背景
-プログラミングを始めた頃、「草を生やす」の意味すらわかりませんでした。
-あるサービスがきっかけで GitHub のコントリビューションを意識するようになり、継続の大切さを実感。
-同時に、もっと早くアウトプットしておけばよかった…という後悔もあって、このアプリを作りました。
-学習を記録しながら、無理なく草を生やし、アウトプットも意識できる、そんな小さなきっかけになれたら嬉しいです。
 
 ---
 
