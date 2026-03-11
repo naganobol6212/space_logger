@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LogEntry, ThemeType } from '../types';
 import { getTagById } from '../constants/tags';
 
@@ -67,6 +67,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
   const [editDuration, setEditDuration] = useState(log.duration || '');
   const [editLearningType, setEditLearningType] = useState<NonNullable<LogEntry['learningType']>>(log.learningType || 'both');
   const [editDate, setEditDate] = useState(log.timestamp ? toDateInputValue(log.timestamp) : toDateInputValue(new Date().toISOString()));
+  const [editMemo, setEditMemo] = useState(log.memo || '');
 
   const startEdit = () => {
     setIsEditing(true);
@@ -74,6 +75,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
     setEditDuration(log.duration || '');
     setEditLearningType(log.learningType || 'both');
     setEditDate(log.timestamp ? toDateInputValue(log.timestamp) : toDateInputValue(new Date().toISOString()));
+    setEditMemo(log.memo || '');
   };
 
   const cancelEdit = () => {
@@ -89,6 +91,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
       durationMinutes,
       learningType: editLearningType,
       timestamp: nextTimestamp,
+      memo: editMemo,
     });
     setIsEditing(false);
   };
@@ -185,6 +188,17 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 dark:text-gray-400 uppercase tracking-widest mb-1 ml-1">メモ</label>
+                  <textarea
+                    value={editMemo}
+                    onChange={(e) => setEditMemo(e.target.value)}
+                    placeholder="学習メモを入力"
+                    rows={2}
+                    className="w-full bg-white dark:bg-[#0B1221]/60 border border-slate-200 dark:border-blue-800/30 rounded-xl py-2.5 px-3 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-blue-400/20 focus:ring-2 focus:ring-primary outline-none transition-all text-sm resize-none"
+                  />
+                </div>
+
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     onClick={cancelEdit}
@@ -242,24 +256,24 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
                   </>
                 )}
 
-                {log.memo && !isEditing && (
-                  <button
-                    onClick={toggleExpand}
-                    className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"
-                    title="メモを開閉"
-                    aria-label="メモを開閉"
-                  >
-                    <span className="material-symbols-outlined text-base transition-transform duration-300" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>keyboard_arrow_down</span>
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Details / Memo Section */}
+        {/* メモ1行プレビュー（クリックで展開） */}
+        {!isEditing && log.memo && !isExpanded && (
+          <div onClick={toggleExpand} className="px-4 pb-3 pt-0 cursor-pointer">
+            <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+              <span className="material-symbols-outlined text-xs mr-1 align-middle">notes</span>
+              {log.memo}
+            </p>
+          </div>
+        )}
+
+        {/* メモ展開表示 */}
         {isExpanded && log.memo && (
-          <div className="px-4 pb-4 pt-0 animate-fade-in">
+          <div onClick={toggleExpand} className="px-4 pb-4 pt-0 animate-fade-in cursor-pointer">
             <div className="p-3 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap border border-slate-100 dark:border-white/5">
               {log.memo}
             </div>
@@ -274,23 +288,62 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ log, idx, onUpdateLog, onDele
   );
 };
 
-const HistoryPage: React.FC<HistoryPageProps> = ({ logs, theme, onUpdateLog, onDeleteLog }) => {
+const HistoryPage: React.FC<HistoryPageProps> = ({ logs, onUpdateLog, onDeleteLog }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 安全なフィルタリング
+  // ⑥ 検索でメモもヒット
   const filteredLogs = (logs || []).filter(log => {
     if (!log) return false;
     const term = searchTerm.toLowerCase();
     const titleMatch = (log.title || '').toLowerCase().includes(term);
-
     const tags = Array.isArray(log.tags) ? log.tags : [];
     const tagMatch = tags.some(tagId => {
       const def = getTagById(tagId);
       return (def?.label ?? '').toLowerCase().includes(term);
     });
-
-    return titleMatch || tagMatch;
+    const memoMatch = (log.memo || '').toLowerCase().includes(term);
+    return titleMatch || tagMatch || memoMatch;
   });
+
+  // ⑦ 今週の合計をuseMemoで計算
+  const weeklyTotalMinutes = useMemo(() => {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return (logs || [])
+      .filter(log => log.timestamp && new Date(log.timestamp) >= monday)
+      .reduce((sum, log) => sum + (log.durationMinutes || 0), 0);
+  }, [logs]);
+
+  // ⑧ groupedLogsをuseMemoで作成
+  const groupedLogs = useMemo(() => {
+    const map = new Map<string, { displayDate: string; logs: LogEntry[]; totalMinutes: number }>();
+    filteredLogs.forEach(log => {
+      const key = new Date(log.timestamp).toLocaleDateString('sv-SE');
+      const d = new Date(log.timestamp);
+      const today = new Date().toLocaleDateString('sv-SE');
+      const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE');
+      const displayDate = key === today ? '今日'
+        : key === yesterday ? '昨日'
+        : d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+      if (!map.has(key)) map.set(key, { displayDate, logs: [], totalMinutes: 0 });
+      const group = map.get(key)!;
+      group.logs.push(log);
+      group.totalMinutes += log.durationMinutes || 0;
+    });
+    return Array.from(map.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([, group]) => group);
+  }, [filteredLogs]);
+
+  const formatMinutes = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m}分`;
+    if (m === 0) return `${h}時間`;
+    return `${h}時間${m}分`;
+  };
 
   return (
     <div className="flex flex-col h-full animate-fade-in-up">
@@ -301,14 +354,16 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ logs, theme, onUpdateLog, onD
           </h1>
           <p className="text-xs text-blue-500 dark:text-blue-300 font-bold mt-1 tracking-wider uppercase">LEARNING ARCHIVE</p>
         </div>
-        <button className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 dark:bg-white/10 backdrop-blur text-slate-500 dark:text-white/70 hover:bg-slate-300 dark:hover:bg-white/20 transition-colors">
-          <span className="material-symbols-outlined text-lg">filter_list</span>
-        </button>
+        {/* ⑨ 今週の合計表示 */}
+        <div className="text-right">
+          <p className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-widest">今週</p>
+          <p className="text-sm font-black text-primary">{formatMinutes(weeklyTotalMinutes)}</p>
+        </div>
       </header>
 
       <div className="px-4 pb-24 flex-1 flex flex-col overflow-hidden">
         <div className="glass-panel bg-white/80 dark:bg-glass-dark border border-slate-200 dark:border-white/10 rounded-3xl p-4 shadow-xl ring-1 ring-slate-200 dark:ring-white/5 h-full flex flex-col">
-          <div className="relative mb-6">
+          <div className="relative mb-4">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-blue-300/50 material-symbols-outlined">search</span>
             <input
               value={searchTerm}
@@ -319,17 +374,27 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ logs, theme, onUpdateLog, onD
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 space-y-4 scrollbar-hide">
-            {filteredLogs.map((log, idx) => (
-              <HistoryItem key={log.id} log={log} idx={idx} onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
-            ))}
-
-            {filteredLogs.length === 0 && (
+          {/* ⑨ 日付グループでレンダリング */}
+          <div className="flex-1 overflow-y-auto pr-1 scrollbar-hide">
+            {groupedLogs.length === 0 && (
               <div className="text-center py-12 opacity-50">
                 <span className="material-symbols-outlined text-4xl block mb-2 text-slate-400">search_off</span>
                 <p className="text-sm text-slate-500">該当する記録が見つかりません</p>
               </div>
             )}
+            {groupedLogs.map(group => (
+              <div key={group.displayDate} className="mb-4">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <p className="text-xs font-black text-slate-500 dark:text-gray-400 uppercase tracking-widest">{group.displayDate}</p>
+                  <p className="text-xs font-bold text-slate-400 dark:text-gray-500">合計: {formatMinutes(group.totalMinutes)}</p>
+                </div>
+                <div className="space-y-3">
+                  {group.logs.map((log, idx) => (
+                    <HistoryItem key={log.id} log={log} idx={idx} onUpdateLog={onUpdateLog} onDeleteLog={onDeleteLog} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
