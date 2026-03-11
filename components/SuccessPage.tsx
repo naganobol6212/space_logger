@@ -22,10 +22,9 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
   const syncStartedRef = React.useRef(false);
   const [githubAuth, setGithubAuth] = React.useState<{
     isGithubOAuth: boolean;
-    providerToken: string | null;
     oauthUsername: string | null;
     ready: boolean;
-  }>({ isGithubOAuth: false, providerToken: null, oauthUsername: null, ready: false });
+  }>({ isGithubOAuth: false, oauthUsername: null, ready: false });
   const learningTypeLabel = entry?.learningType === 'input'
     ? 'インプット'
     : entry?.learningType === 'output'
@@ -39,7 +38,6 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
       if (!mounted) return;
       setGithubAuth({
         isGithubOAuth: status.isGithubOAuth,
-        providerToken: status.providerToken,
         oauthUsername: status.oauthUsername,
         ready: true,
       });
@@ -78,7 +76,7 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ entry, user, theme }) => {
     setSyncCode(undefined);
 
     // SuccessPage は「同期を試みる」だけを担当し、権限判定は store.ts の result.code に委譲する。
-    const result = await syncLogToGitHub(userForSync, githubAuth.providerToken || undefined, entry);
+    const result = await syncLogToGitHub(userForSync, entry);
     if (result.success) {
       setSyncStatus('success');
       setSyncCode(result.code);
