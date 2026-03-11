@@ -30,7 +30,6 @@ export { getSupabaseConfigDebug, isSupabaseConfigured };
 
 export interface GitHubAuthStatus {
   isGithubOAuth: boolean;
-  providerToken: string | null;
   oauthUsername: string | null;
 }
 
@@ -112,17 +111,6 @@ export const getCurrentSession = async (): Promise<Session | null> => {
   return data.session;
 };
 
-const getStoredGitHubToken = async (userId: string, accessToken: string): Promise<string | null> => {
-  const { SUPABASE_URL } = ensureConfig();
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=github_access_token`,
-    { headers: authHeaders(accessToken) }
-  );
-  if (!res.ok) return null;
-  const rows = await res.json() as { github_access_token: string | null }[];
-  return rows[0]?.github_access_token || null;
-};
-
 const saveGitHubTokenToProfile = async (userId: string, token: string, accessToken: string): Promise<void> => {
   const { SUPABASE_URL } = ensureConfig();
   await fetch(
@@ -137,13 +125,13 @@ const saveGitHubTokenToProfile = async (userId: string, token: string, accessTok
 
 export const getGitHubAuthStatus = async (): Promise<GitHubAuthStatus> => {
   if (!isSupabaseConfigured) {
-    return { isGithubOAuth: false, providerToken: null, oauthUsername: null };
+    return { isGithubOAuth: false, oauthUsername: null };
   }
 
   const session = await getCurrentSession();
   const authUser = session?.user || await fetchAuthUser();
   if (!authUser) {
-    return { isGithubOAuth: false, providerToken: null, oauthUsername: null };
+    return { isGithubOAuth: false, oauthUsername: null };
   }
 
   const appProvider = typeof authUser.app_metadata?.provider === 'string'
@@ -164,18 +152,8 @@ export const getGitHubAuthStatus = async (): Promise<GitHubAuthStatus> => {
           ? identityData.login
           : null);
 
-  let providerToken = typeof (session as Session & { provider_token?: string }).provider_token === 'string'
-    ? (session as Session & { provider_token?: string }).provider_token!
-    : null;
-
-  // セッションにトークンがない場合はDBから取得
-  if (!providerToken && session?.access_token) {
-    providerToken = await getStoredGitHubToken(authUser.id, session.access_token);
-  }
-
   return {
     isGithubOAuth,
-    providerToken,
     oauthUsername,
   };
 };
