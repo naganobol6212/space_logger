@@ -29,21 +29,21 @@
 
 1. **ログイン** — メールアドレスまたは GitHub アカウントでサインイン
 
-   [![Image from Gyazo](https://i.gyazo.com/202edbef53dccddc51cc0622d67d4279.png)](https://gyazo.com/202edbef53dccddc51cc0622d67d4279)
+   <img src="https://i.gyazo.com/202edbef53dccddc51cc0622d67d4279.png" width="600" />
 
 2. **記録する** — 学習タイトル・時間・タグ・学習タイプ（インプット / アウトプット / 両方）・メモを入力して保存
 
-   [![Image from Gyazo](https://i.gyazo.com/3d6c291c36d94ce96a9ccf17f1799b84.png)](https://gyazo.com/3d6c291c36d94ce96a9ccf17f1799b84)
+   <img src="https://i.gyazo.com/3d6c291c36d94ce96a9ccf17f1799b84.png" width="600" />
 
 3. **草が生える** — 記録と同時に GitHub の専用リポジトリへ自動コミット。Contribution Graph に反映される
 
 4. **振り返る** — 履歴ページで過去のログを日付グループ別に確認。検索・編集・削除も可能
 
-   [![Image from Gyazo](https://i.gyazo.com/2686275f9ecca1edb8cf57b1fa5d614e.png)](https://gyazo.com/2686275f9ecca1edb8cf57b1fa5d614e)
+   <img src="https://i.gyazo.com/2686275f9ecca1edb8cf57b1fa5d614e.png" width="600" />
 
 5. **分析する** — 分析ページで週別学習時間・タグ別内訳・インプット/アウトプット比率をグラフで確認
 
-   [![Image from Gyazo](https://i.gyazo.com/89dec51d04e1e9ab04002b77896d13b3.png)](https://gyazo.com/89dec51d04e1e9ab04002b77896d13b3)
+   <img src="https://i.gyazo.com/89dec51d04e1e9ab04002b77896d13b3.png" width="600" />
 
 ## 機能
 
